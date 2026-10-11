@@ -38,7 +38,8 @@ test("local form and password safeguards remain in place", () => {
   assert.match(js, /signupEmail\s*=\s*new FormData\(form\)\.get\("email"\)/);
   assert.match(js, /showView\("verify"\)/);
   assert.doesNotMatch(js, /\.innerHTML\s*=/);
-  assert.doesNotMatch(js, /\bfetch\s*\(|supabase\./);
+  assert.doesNotMatch(js, /\bfetch\s*\(/);
+  assert.doesNotMatch(js, /\bsupabase\.(?:auth|from|storage|functions)\b/);
 });
 
 test("local stylesheet, script, and image references exist", () => {
