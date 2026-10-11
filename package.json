@@ -1,0 +1,17 @@
+{
+  "name": "auth-flow",
+  "version": "1.0.0",
+  "description": "A minimal authentication app built with vanilla HTML, CSS, JavaScript, and Supabase Auth. This project is a hands-on exercise in implementing common authentication flows and building a small, maintainable web application.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node scripts/server.js",
+    "test": "node --test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.3"
+  }
+}

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f6f8">
+    <title>Auth-Flow | Sign in</title>
+    <link rel="stylesheet" href="styles/style.css">
+    <script type="module" src="scripts/script.js"></script>
+  </head>
+  <body>
+    <main class="auth-shell">
+      <a class="brand" href="#signin" data-view-link="signin" aria-label="Auth-Flow home">Auth-Flow</a>
+      <section class="auth-card" aria-labelledby="signin-title">
+        <section class="auth-view" id="view-signin" data-view="signin" aria-labelledby="signin-title">
+          <h1 id="signin-title" tabindex="-1">Sign in to your account</h1>
+          <form id="signin-form" data-local-form>
+            <label for="signin-email">Email address</label>
+            <input id="signin-email" name="email" type="email" autocomplete="email" required>
+            <label for="signin-password">Password</label>
+            <div class="password-field">
+              <input id="signin-password" name="password" type="password" autocomplete="current-password" required>
+              <button class="visibility-toggle" type="button" data-password-toggle="signin-password" aria-label="Show password">Show</button>
+            </div>
+            <div class="form-row"><span></span><a href="#recovery" data-view-link="recovery">Forgot password?</a></div>
+            <button class="button button-primary button-full" type="submit">Sign in</button>
+            <p class="message" data-message role="status" aria-live="polite"></p>
+          </form>
+          <div class="divider"><span>Or continue with</span></div>
+          <div class="oauth-buttons">
+            <button class="button button-secondary" type="button" data-unavailable="Google sign-in">
+              <img class="oauth-icon" src="assets/google-icon.svg" alt="" aria-hidden="true">
+              <span>Google</span>
+            </button>
+            <button class="button button-secondary" type="button" data-unavailable="GitHub sign-in">
+              <img class="oauth-icon" src="assets/github-icon.svg" alt="" aria-hidden="true">
+              <span>GitHub</span>
+            </button>
+          </div>
+          <p class="switch-copy">New here? <a href="#signup" data-view-link="signup">Create an account</a></p>
+        </section>
+
+        <section class="auth-view" id="view-signup" data-view="signup" aria-labelledby="signup-title" hidden>
+          <h1 id="signup-title" tabindex="-1">Create your account</h1>
+          <p class="intro">Enter your email and choose a password.</p>
+          <form id="signup-form" data-local-form>
+            <label for="signup-email">Email address</label>
+            <input id="signup-email" name="email" type="email" autocomplete="email" required>
+            <label for="signup-password">Password</label>
+            <div class="password-field">
+              <input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="8" aria-describedby="signup-password-hint" required>
+              <button class="visibility-toggle" type="button" data-password-toggle="signup-password" aria-label="Show password">Show</button>
+            </div>
+            <p class="field-hint" id="signup-password-hint">Use at least 8 characters.</p>
+            <label for="signup-confirm">Confirm password</label>
+            <div class="password-field">
+              <input id="signup-confirm" name="confirm" type="password" autocomplete="new-password" required>
+              <button class="visibility-toggle" type="button" data-password-toggle="signup-confirm" aria-label="Show password">Show</button>
+            </div>
+            <button class="button button-primary button-full" type="submit">Continue</button>
+            <p class="message" data-message role="status" aria-live="polite"></p>
+          </form>
+          <div class="divider"><span>OR</span></div>
+          <div class="oauth-buttons">
+            <button class="button button-secondary" type="button" aria-label="Continue with Google" data-unavailable="Google OAuth sign-up">
+              <img class="oauth-icon" src="assets/google-icon.svg" alt="" aria-hidden="true">
+              <span>Google</span>
+            </button>
+            <button class="button button-secondary" type="button" aria-label="Continue with GitHub" data-unavailable="GitHub OAuth sign-up">
+              <img class="oauth-icon" src="assets/github-icon.svg" alt="" aria-hidden="true">
+              <span>GitHub</span>
+            </button>
+          </div>
+          <p class="switch-copy">Already have an account? <a href="#signin" data-view-link="signin">Back to sign in</a></p>
+        </section>
+
+        <section class="auth-view" id="view-verify" data-view="verify" aria-labelledby="verify-title" hidden>
+          <h1 id="verify-title" tabindex="-1">Verify your email</h1>
+          <p class="intro">After registration is connected, check your inbox and spam folder for a verification message.</p>
+          <div class="notice" id="verify-address">Email address: <strong data-preserved-email>No email entered</strong></div>
+          <p class="message" data-message role="status" aria-live="polite">No account has been created and no email has been sent. Registration will be connected in a later module.</p>
+          <button class="button button-secondary button-full" type="button" data-unavailable="Resend verification">Resend verification</button>
+          <p class="switch-copy"><a href="#signin" data-view-link="signin">Return to sign in</a></p>
+        </section>
+
+        <section class="auth-view" id="view-recovery" data-view="recovery" aria-labelledby="recovery-title" hidden>
+          <h1 id="recovery-title" tabindex="-1">Reset your password</h1>
+          <form id="recovery-form" data-local-form>
+            <label for="recovery-email">Email address</label>
+            <input id="recovery-email" name="email" type="email" autocomplete="email" required>
+            <button class="button button-primary button-full" type="submit">Send recovery link</button>
+            <p class="message" data-message role="status" aria-live="polite"></p>
+          </form>
+          <p class="switch-copy"><a href="#signin" data-view-link="signin">Back to sign in</a></p>
+        </section>
+
+        <section class="auth-view" id="view-new-password" data-view="new-password" aria-labelledby="new-password-title" hidden>
+          <h1 id="new-password-title" tabindex="-1">Set a new password</h1>
+          <p class="intro">Choose a new password after opening a valid recovery link.</p>
+          <form id="new-password-form" data-local-form>
+            <label for="new-password">New password</label>
+            <div class="password-field">
+              <input id="new-password" name="password" type="password" autocomplete="new-password" minlength="8" aria-describedby="new-password-hint" required>
+              <button class="visibility-toggle" type="button" data-password-toggle="new-password" aria-label="Show password">Show</button>
+            </div>
+            <p class="field-hint" id="new-password-hint">Use at least 8 characters.</p>
+            <label for="new-password-confirm">Confirm new password</label>
+            <div class="password-field">
+              <input id="new-password-confirm" name="confirm" type="password" autocomplete="new-password" required>
+              <button class="visibility-toggle" type="button" data-password-toggle="new-password-confirm" aria-label="Show password">Show</button>
+            </div>
+            <button class="button button-primary button-full" type="submit">Update password</button>
+            <p class="message" data-message role="status" aria-live="polite"></p>
+          </form>
+          <p class="switch-copy"><a href="#signin" data-view-link="signin">Back to sign in</a></p>
+        </section>
+      </section>
+      <p class="page-note">Authentication is not connected in this preview.</p>
+    </main>
+  </body>
+</html>

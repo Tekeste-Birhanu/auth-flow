@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f6f8">
+    <title>Auth-Flow | Account overview</title>
+    <link rel="stylesheet" href="styles/style.css">
+    <link rel="stylesheet" href="styles/dashboard.css">
+    <script type="module" src="scripts/script.js"></script>
+  </head>
+  <body class="dashboard-page">
+    <header class="site-header">
+      <a class="brand" href="index.html">Auth-Flow</a>
+      <button class="button button-secondary" type="button" data-unavailable="Sign out">Sign out</button>
+    </header>
+    <main class="dashboard-main">
+      <div class="dashboard-heading">
+        <h1>Welcome</h1>
+      </div>
+      <p class="message dashboard-message" data-global-message role="status" aria-live="polite"></p>
+      <section class="dashboard-section" aria-labelledby="account-title">
+        <h2 id="account-title">Account information</h2>
+        <dl class="account-list">
+          <div><dt>Email address</dt><dd>—</dd></div>
+          <div><dt>User ID</dt><dd>—</dd></div>
+          <div><dt>Email verification</dt><dd>—</dd></div>
+          <div><dt>Authentication provider</dt><dd>—</dd></div>
+          <div><dt>Account created</dt><dd>—</dd></div>
+          <div><dt>Last sign-in</dt><dd>—</dd></div>
+          <div><dt>Session expiration</dt><dd>—</dd></div>
+        </dl>
+        <p class="account-note">Account details will appear when authentication is connected.</p>
+      </section>
+      <section class="dashboard-section password-section" aria-labelledby="password-title">
+        <h2 id="password-title">Change password</h2>
+        <p class="intro">Password changes will be available after authentication is connected.</p>
+        <form id="change-password-form" data-local-form>
+          <label for="current-password">Current password</label>
+          <div class="password-field">
+            <input id="current-password" name="currentPassword" type="password" autocomplete="current-password" required>
+            <button class="visibility-toggle" type="button" data-password-toggle="current-password" aria-label="Show password">Show</button>
+          </div>
+          <label for="dashboard-new-password">New password</label>
+          <div class="password-field">
+            <input id="dashboard-new-password" name="newPassword" type="password" autocomplete="new-password" minlength="8" aria-describedby="dashboard-password-hint" required>
+            <button class="visibility-toggle" type="button" data-password-toggle="dashboard-new-password" aria-label="Show password">Show</button>
+          </div>
+          <p class="field-hint" id="dashboard-password-hint">Use at least 8 characters.</p>
+          <label for="dashboard-confirm-password">Confirm new password</label>
+          <div class="password-field">
+            <input id="dashboard-confirm-password" name="confirmPassword" type="password" autocomplete="new-password" required>
+            <button class="visibility-toggle" type="button" data-password-toggle="dashboard-confirm-password" aria-label="Show password">Show</button>
+          </div>
+          <button class="button button-primary" type="submit">Update password</button>
+          <p class="message" data-message role="status" aria-live="polite"></p>
+        </form>
+      </section>
+      <p class="preview-note">Dashboard access is not protected in this UI preview.</p>
+    </main>
+  </body>
+</html>
