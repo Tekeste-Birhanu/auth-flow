@@ -1,3 +1,5 @@
+import "./supabase.js";
+
 const views = [...document.querySelectorAll("[data-view]")];
 const emailLabel = document.querySelector("[data-preserved-email]");
 let signupEmail = "";
