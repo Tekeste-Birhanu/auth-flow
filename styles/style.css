@@ -161,6 +161,16 @@ input[aria-invalid="true"] {
   color: var(--color-muted);
   font-size: 0.82rem;
 }
+.password-requirements {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--color-muted);
+  font-size: 0.86rem;
+}
+.password-requirements li { margin: 0.2rem 0; }
+.password-requirements li[data-valid="true"] { color: #176b42; }
+.password-requirements li span { display: inline-block; width: 1.1rem; font-weight: 700; }
+.password-requirements + .field-hint { margin-top: 0; }
 .form-row {
   display: flex;
   justify-content: space-between;

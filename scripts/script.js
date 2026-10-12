@@ -5,12 +5,24 @@ import {
   getVerifiedUser,
   handleSignupConfirmationReturn as processSignupConfirmationReturn,
   inspectAuthReturnUrl,
-  protectDashboard as checkDashboardAccess
+  protectDashboard as checkDashboardAccess,
+  redirectVerifiedUser
 } from "./auth-helpers.mjs";
+import {
+  accountValues,
+  changePassword,
+  evaluatePasswordRequirements,
+  listenForAuthChanges,
+  performSignOut,
+  passwordChangeMessage,
+  supportsPasswordChange
+} from "./session-helpers.mjs";
 
 const views = [...document.querySelectorAll("[data-view]")];
 const signupEmailInput = document.querySelector("#verify-email");
 let signupEmail = "";
+let currentDashboardUser = null;
+let navigationStarted = false;
 const initialAuthReturn = inspectAuthReturnUrl(window.location.href);
 let handlingAuthReturn = initialAuthReturn.isAuthReturn;
 
@@ -83,10 +95,14 @@ function setFormBusy(form, busy, message = "") {
 }
 
 function redirectToDashboard() {
+  if (navigationStarted) return;
+  navigationStarted = true;
   window.location.replace("dashboard.html");
 }
 
 function redirectToSignIn(notice) {
+  if (navigationStarted) return;
+  navigationStarted = true;
   const target = new URL("index.html", window.location.href);
   target.searchParams.set("notice", notice);
   target.hash = "signin";
@@ -239,7 +255,8 @@ function showRedirectNotice() {
   const notice = url.searchParams.get("notice");
   const messages = {
     "verified-email-required": "Sign in with an account that has a confirmed email address to access the dashboard.",
-    "session-check-failed": "We couldn't verify your sign-in. Please sign in again."
+    "session-check-failed": "We couldn't verify your sign-in. Please sign in again.",
+    "signed-out": "You have signed out."
   };
 
   if (!messages[notice]) return;
@@ -256,10 +273,83 @@ async function protectDashboard() {
   await checkDashboardAccess({
     auth: supabase?.auth,
     redirectToSignIn,
-    showDashboard: () => {
+    showDashboard: (user, session) => {
+      currentDashboardUser = user;
+      const values = accountValues(user, session);
+      document.querySelectorAll("[data-account-value]").forEach((value) => {
+        value.textContent = values[value.dataset.accountValue] || "—";
+      });
+      const passwordForm = document.querySelector("#change-password-form");
+      const passwordIntro = document.querySelector("[data-password-intro]");
+      if (passwordForm && passwordIntro) {
+        const available = supportsPasswordChange(user);
+        passwordForm.hidden = !available;
+        passwordIntro.textContent = available
+          ? "Enter your current password and choose a new password."
+          : "Password changes are available only for accounts with an email and password sign-in.";
+      }
       dashboard.hidden = false;
       status.hidden = true;
     }
+  });
+}
+
+async function handleSignOut() {
+  const button = document.querySelector("[data-signout]");
+  const message = document.querySelector("[data-global-message]");
+  if (!supabase || !button) return;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  const result = await performSignOut(supabase.auth);
+  if (!result.success) {
+    setMessage(message, "We couldn't sign you out. Check your connection and try again.", "error");
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+    return;
+  }
+  redirectToSignIn("signed-out");
+}
+
+async function handleChangePassword(form) {
+  const formData = new FormData(form);
+  const currentPassword = String(formData.get("currentPassword") || "");
+  const newPassword = String(formData.get("newPassword") || "");
+  setFormBusy(form, true, "Updating your password…");
+  try {
+    if (!supabase || !currentDashboardUser) throw new Error("session-unavailable");
+    const { error } = await changePassword(supabase.auth, currentDashboardUser, currentPassword, newPassword);
+    if (error) {
+      setMessage(form.querySelector("[data-message]"), passwordChangeMessage(error), "error");
+      return;
+    }
+    setMessage(form.querySelector("[data-message]"), "Your password has been updated.", "success");
+  } catch (error) {
+    setMessage(form.querySelector("[data-message]"), passwordChangeMessage(error), "error");
+  } finally {
+    form.querySelectorAll('[name="currentPassword"], [name="newPassword"], [name="confirmPassword"]')
+      .forEach((input) => { input.value = ""; });
+    setFormBusy(form, false);
+  }
+}
+
+function subscribeToAuthChanges() {
+  if (!supabase) return;
+  const onDashboard = document.body.classList.contains("dashboard-page");
+  listenForAuthChanges(supabase.auth, async (event, session) => {
+    if (onDashboard) {
+      if (event === "SIGNED_OUT") {
+        redirectToSignIn("signed-out");
+        return;
+      }
+      if (["SIGNED_IN", "TOKEN_REFRESHED", "USER_UPDATED"].includes(event)) {
+        await protectDashboard();
+      }
+      return;
+    }
+
+    if (initialAuthReturn.isAuthReturn || !session ||
+        !["INITIAL_SESSION", "SIGNED_IN", "TOKEN_REFRESHED", "USER_UPDATED"].includes(event)) return;
+    await redirectVerifiedUser(supabase.auth, redirectToDashboard);
   });
 }
 
@@ -286,7 +376,12 @@ document.addEventListener("click", (event) => {
   if (unavailable) {
     const view = unavailable.closest("[data-view]");
     const target = view?.querySelector("[data-message]") ?? document.querySelector("[data-global-message]");
-    setMessage(target, `${unavailable.dataset.unavailable} is not connected in Module 03.`);
+    setMessage(target, `${unavailable.dataset.unavailable} is not connected yet.`);
+    return;
+  }
+
+  if (event.target.closest("[data-signout]")) {
+    void handleSignOut();
   }
 });
 
@@ -306,6 +401,10 @@ document.querySelectorAll("[data-local-form]").forEach((form) => {
     input.removeAttribute("aria-invalid");
     input.setCustomValidity("");
 
+    if (input.matches("[data-password-rules]")) {
+      updatePasswordRequirements(input);
+    }
+
     if (form.id === "resend-verification-form" && input.name === "email") {
       signupEmail = input.value.trim();
     }
@@ -324,6 +423,12 @@ document.querySelectorAll("[data-local-form]").forEach((form) => {
     event.preventDefault();
     const confirm = form.querySelector('[name="confirm"], [name="confirmPassword"]');
     const password = form.querySelector('[name="password"], [name="newPassword"]');
+
+    if (password?.matches("[data-password-rules]")) {
+      const allRequirementsMet = updatePasswordRequirements(password);
+      password.setCustomValidity(allRequirementsMet ? "" : "Choose a password that meets each listed requirement.");
+      if (!allRequirementsMet) password.setAttribute("aria-invalid", "true");
+    }
 
     if (confirm && password) {
       const mismatch = password.value !== confirm.value;
@@ -349,18 +454,38 @@ document.querySelectorAll("[data-local-form]").forEach((form) => {
       void handleResendVerification(form);
       return;
     }
+    if (form.id === "change-password-form") {
+      void handleChangePassword(form);
+      return;
+    }
 
     const message = form.querySelector("[data-message]");
     if (form.id === "recovery-form") {
       setMessage(message, "Password recovery will be available in a later module. No email was sent.");
     } else if (form.id === "new-password-form") {
       setMessage(message, "Password changes will be available in a later module. No password was changed.");
-    } else if (form.id === "change-password-form") {
-      setMessage(message, "Password changes will be available in a later module. No password was changed.");
     }
   });
 });
 
+function updatePasswordRequirements(input) {
+  const rules = evaluatePasswordRequirements(input.value);
+  let metCount = 0;
+
+  for (const [name, met] of Object.entries(rules)) {
+    const item = input.form.querySelector(`[data-password-rule="${name}"]`);
+    if (!item) continue;
+    item.dataset.valid = String(met);
+    item.firstElementChild.textContent = met ? "✓" : "○";
+    metCount += Number(met);
+  }
+
+  const status = input.form.querySelector("[data-password-rules-status]");
+  if (status) status.textContent = `${metCount} of ${Object.keys(rules).length} requirements met.`;
+  return metCount === Object.keys(rules).length;
+}
+
+subscribeToAuthChanges();
 if (document.body.classList.contains("dashboard-page")) {
   void protectDashboard();
 } else if (initialAuthReturn.isAuthReturn) {

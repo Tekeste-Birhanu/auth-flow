@@ -21,23 +21,39 @@ export function cleanAuthReturnUrl(href) {
   return `${url.pathname}`;
 }
 
-export async function getVerifiedUser(auth) {
+export async function getVerifiedAuthState(auth) {
   const { data: sessionData, error: sessionError } = await auth.getSession();
-  if (sessionError) return { user: null, reason: "session-error" };
-  if (!sessionData.session) return { user: null, reason: "no-session" };
+  if (sessionError) return { user: null, session: null, reason: "session-error" };
+  if (!sessionData.session) return { user: null, session: null, reason: "no-session" };
 
   // getUser() validates the saved access token with Supabase Auth.
   const { data: userData, error: userError } = await auth.getUser();
-  if (userError) return { user: null, reason: "user-error" };
-  if (!userData.user) return { user: null, reason: "no-user" };
-  if (!userData.user.email_confirmed_at) return { user: null, reason: "email-unverified" };
+  if (userError) return { user: null, session: null, reason: "user-error" };
+  if (!userData.user) return { user: null, session: null, reason: "no-user" };
+  if (!userData.user.email_confirmed_at) return { user: null, session: null, reason: "email-unverified" };
 
-  return { user: userData.user, reason: null };
+  return { user: userData.user, session: sessionData.session, reason: null };
+}
+
+export async function getVerifiedUser(auth) {
+  const result = await getVerifiedAuthState(auth);
+  return { user: result.user, reason: result.reason };
+}
+
+export async function redirectVerifiedUser(auth, redirect) {
+  try {
+    const result = await getVerifiedUser(auth);
+    if (!result.user) return false;
+    redirect();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function protectDashboard({ auth, showDashboard, redirectToSignIn }) {
   try {
-    const result = await getVerifiedUser(auth);
+    const result = await getVerifiedAuthState(auth);
     if (!result.user) {
       redirectToSignIn(result.reason === "user-error" || result.reason === "session-error"
         ? "session-check-failed"
@@ -45,7 +61,7 @@ export async function protectDashboard({ auth, showDashboard, redirectToSignIn }
       return false;
     }
 
-    showDashboard();
+    showDashboard(result.user, result.session);
     return true;
   } catch {
     redirectToSignIn("session-check-failed");
