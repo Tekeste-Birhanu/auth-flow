@@ -134,23 +134,23 @@ Verify the application across normal and failure scenarios.
 
 **Not included in the initial version:** custom profile tables, account deletion, an admin panel, teams, payments, or a custom backend.
 
-The project starts with manual testing. Automated tests and additional features may be introduced later.
+The project uses Node's built-in test runner for static checks and mocked SDK behavior. Live authentication and email-link flows still require manual browser verification.
 
 ## Development Approach
 
-The application is built incrementally, with each module establishing a foundation for the next. The Module 01 preview uses honest placeholders rather than mock account data. Real authentication and session state will be handled by Supabase in later modules.
+The application is built incrementally, with each module establishing a foundation for the next. The Module 01 preview uses honest placeholders rather than mock account data. Email/password authentication is implemented in Module 03; broader session management is handled in Module 04.
 
 ## Status
 
-**Current phase:** Module 02 — Supabase Integration
+**Current phase:** Module 03 — Email and Password Authentication (manual verification pending)
 
-**Next:** Module 03 — Email and Password Authentication
+**Next:** Module 04 — Session and Dashboard
 
 This is a learning and portfolio project focused on understanding authentication flows and building a maintainable application with minimal tooling.
 
 ## Module 01 implementation notes
 
-Module 01 provides the authentication and account screens as a UI preview. Forms perform local validation only; no authentication, network request, session, or account data is simulated. The dashboard is not protected until session handling is added in a later module.
+Module 01 provides the authentication and account screens as a UI foundation. Module 03 connects email/password registration, sign-in, confirmation emails, and a verified-user dashboard gate. OAuth, password recovery, password changes, and broader session management remain in later modules.
 
 Start the local static server with `npm start` and open the URL printed in the terminal (by default, `http://127.0.0.1:4173`). The server uses Node's built-in HTTP module, so it adds no runtime dependency or build step.
 
@@ -171,3 +171,15 @@ Enable the Email provider and **Confirm email**. The default **Confirm sign up**
 For Google OAuth, create a Web application OAuth client. Add `http://127.0.0.1:4173` as an authorized JavaScript origin and the Supabase project's callback URL as an authorized redirect URI. For GitHub OAuth, use `http://127.0.0.1:4173` as the application homepage and the same Supabase callback as the authorization callback URL. The callback has the form `https://<project-ref>.supabase.co/auth/v1/callback`; copy the exact value shown in the provider settings for the project. Enter each provider's client ID and secret in the corresponding Supabase Dashboard provider settings. Keep provider secrets out of this repository. Google OAuth apps in Testing mode must also list the accounts allowed to test the app.
 
 The client is initialized on both pages, but Module 02 does not make an authentication request. A non-mutating connectivity check can request `GET <SUPABASE_URL>/auth/v1/settings` with the publishable key in the `apikey` header; an HTTP 200 response confirms the browser can reach Supabase Auth. This check does not create a user or session.
+
+### Module 03 email/password authentication
+
+Registration and sign-in use the shared Supabase client. With **Confirm email** enabled, registration sends a confirmation email and keeps the user on the verification view. The confirmation link returns to the existing application root (`http://127.0.0.1:4173/`), which is already in the local redirect allow list; no separate callback page or route is used. The installed SDK processes the implicit-flow URL, and the app then calls `getUser()` to confirm the account before treating the link as successful or revealing the dashboard.
+
+The redirect uses the app's current origin. Before testing from another host, add that host's root URL to the Supabase Auth redirect allow list.
+
+The dashboard shell starts hidden. It is shown only after Supabase confirms an authenticated user whose `email_confirmed_at` value is present. The check fails closed and sends unauthenticated, unverified, or unverifiable sessions back to sign-in. This is a browser-side gate for the current static dashboard; protected database data and broader session management are outside this module.
+
+Duplicate signup and resend responses use neutral messages so the interface does not unnecessarily reveal whether an email address has an account. Confirmation links that return an Auth error, contain malformed callback data, or fail user verification are treated as unsuccessful. Auth tokens and error details are removed from the address bar after processing. The app maps known errors to safe messages instead of showing raw Auth responses.
+
+Run `npm test` for automated checks. Complete the live registration, email-link, invalid/expired-link, sign-in, and direct-dashboard-access checks manually in a browser using a test email address. The hosted default Supabase email sender is suitable for initial testing but has a low sending limit; configure custom SMTP if more frequent testing is needed.

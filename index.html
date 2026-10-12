@@ -13,7 +13,7 @@
       <section class="auth-card" aria-labelledby="signin-title">
         <section class="auth-view" id="view-signin" data-view="signin" aria-labelledby="signin-title">
           <h1 id="signin-title" tabindex="-1">Sign in to your account</h1>
-          <form id="signin-form" data-local-form>
+          <form id="signin-form" method="post" data-local-form>
             <label for="signin-email">Email address</label>
             <input id="signin-email" name="email" type="email" autocomplete="email" required>
             <label for="signin-password">Password</label>
@@ -42,7 +42,7 @@
         <section class="auth-view" id="view-signup" data-view="signup" aria-labelledby="signup-title" hidden>
           <h1 id="signup-title" tabindex="-1">Create your account</h1>
           <p class="intro">Enter your email and choose a password.</p>
-          <form id="signup-form" data-local-form>
+          <form id="signup-form" method="post" data-local-form>
             <label for="signup-email">Email address</label>
             <input id="signup-email" name="email" type="email" autocomplete="email" required>
             <label for="signup-password">Password</label>
@@ -75,16 +75,19 @@
 
         <section class="auth-view" id="view-verify" data-view="verify" aria-labelledby="verify-title" hidden>
           <h1 id="verify-title" tabindex="-1">Verify your email</h1>
-          <p class="intro">After registration is connected, check your inbox and spam folder for a verification message.</p>
-          <div class="notice" id="verify-address">Email address: <strong data-preserved-email>No email entered</strong></div>
-          <p class="message" data-message role="status" aria-live="polite">No account has been created and no email has been sent. Registration will be connected in a later module.</p>
-          <button class="button button-secondary button-full" type="button" data-unavailable="Resend verification">Resend verification</button>
+          <p class="intro">Check your inbox and spam folder for a confirmation link. You can request another link below.</p>
+          <form id="resend-verification-form" method="post" data-local-form>
+            <label for="verify-email">Email address</label>
+            <input id="verify-email" name="email" type="email" autocomplete="email" required>
+            <button class="button button-secondary button-full" type="submit">Resend verification email</button>
+            <p class="message" data-message role="status" aria-live="polite"></p>
+          </form>
           <p class="switch-copy"><a href="#signin" data-view-link="signin">Return to sign in</a></p>
         </section>
 
         <section class="auth-view" id="view-recovery" data-view="recovery" aria-labelledby="recovery-title" hidden>
           <h1 id="recovery-title" tabindex="-1">Reset your password</h1>
-          <form id="recovery-form" data-local-form>
+          <form id="recovery-form" method="post" data-local-form>
             <label for="recovery-email">Email address</label>
             <input id="recovery-email" name="email" type="email" autocomplete="email" required>
             <button class="button button-primary button-full" type="submit">Send recovery link</button>
@@ -96,7 +99,7 @@
         <section class="auth-view" id="view-new-password" data-view="new-password" aria-labelledby="new-password-title" hidden>
           <h1 id="new-password-title" tabindex="-1">Set a new password</h1>
           <p class="intro">Choose a new password after opening a valid recovery link.</p>
-          <form id="new-password-form" data-local-form>
+          <form id="new-password-form" method="post" data-local-form>
             <label for="new-password">New password</label>
             <div class="password-field">
               <input id="new-password" name="password" type="password" autocomplete="new-password" minlength="8" aria-describedby="new-password-hint" required>
@@ -114,7 +117,7 @@
           <p class="switch-copy"><a href="#signin" data-view-link="signin">Back to sign in</a></p>
         </section>
       </section>
-      <p class="page-note">Authentication is not connected in this preview.</p>
+      <p class="page-note">Email and password authentication is provided by Supabase.</p>
     </main>
   <script src="node_modules/@supabase/supabase-js/dist/umd/supabase.js"></script>
   <script type="module" src="scripts/script.js"></script>

@@ -1,13 +1,24 @@
-import "./supabase.js";
+import { supabase } from "./supabase.js";
+import {
+  authErrorMessage,
+  cleanAuthReturnUrl,
+  getVerifiedUser,
+  handleSignupConfirmationReturn as processSignupConfirmationReturn,
+  inspectAuthReturnUrl,
+  protectDashboard as checkDashboardAccess
+} from "./auth-helpers.mjs";
 
 const views = [...document.querySelectorAll("[data-view]")];
-const emailLabel = document.querySelector("[data-preserved-email]");
+const signupEmailInput = document.querySelector("#verify-email");
 let signupEmail = "";
+const initialAuthReturn = inspectAuthReturnUrl(window.location.href);
+let handlingAuthReturn = initialAuthReturn.isAuthReturn;
 
 function setMessage(container, message, kind = "info") {
   if (!container) return;
   container.textContent = message;
-  container.dataset.kind = kind;
+  if (message) container.dataset.kind = kind;
+  else delete container.dataset.kind;
 }
 
 function clearMessages() {
@@ -36,29 +47,25 @@ function showView(name, updateHistory = true, moveFocus = true) {
   if (!selected) return;
 
   const previous = views.find((view) => !view.hidden);
-  if (previous && previous !== selected) {
-    clearViewPasswords(previous);
-  }
+  if (previous && previous !== selected) clearViewPasswords(previous);
 
   clearMessages();
   views.forEach((view) => {
     view.hidden = view !== selected;
   });
 
-  if (previous !== selected && moveFocus) {
-    selected.querySelector("h1")?.focus();
+  if (selected.dataset.view === "verify" && signupEmailInput) {
+    if (signupEmail && !signupEmailInput.value) signupEmailInput.value = signupEmail;
+    if (signupEmailInput.value) signupEmail = signupEmailInput.value.trim();
+    if (!signupEmailInput.value) {
+      setMessage(
+        selected.querySelector("[data-message]"),
+        "Enter the email address you used to sign up to request a confirmation link."
+      );
+    }
   }
 
-  if (selected.dataset.view === "verify") {
-    emailLabel.textContent = signupEmail || "No email entered";
-    const message = selected.querySelector("[data-message]");
-    setMessage(
-      message,
-      signupEmail
-        ? "Your details passed local checks. No account has been created and no email has been sent; registration will be connected in a later module."
-        : "No account has been created and no email has been sent. Registration will be connected in a later module."
-    );
-  }
+  if (previous !== selected && moveFocus) selected.querySelector("h1")?.focus();
 
   const title = selected.querySelector("h1")?.textContent;
   document.title = title ? `Auth-Flow | ${title}` : "Auth-Flow";
@@ -66,6 +73,194 @@ function showView(name, updateHistory = true, moveFocus = true) {
     const hash = `#${selected.dataset.view}`;
     if (location.hash !== hash) history.pushState({ view: selected.dataset.view }, "", hash);
   }
+}
+
+function setFormBusy(form, busy, message = "") {
+  const submit = form.querySelector('button[type="submit"]');
+  if (submit) submit.disabled = busy;
+  form.setAttribute("aria-busy", String(busy));
+  if (message) setMessage(form.querySelector("[data-message]"), message, "loading");
+}
+
+function redirectToDashboard() {
+  window.location.replace("dashboard.html");
+}
+
+function redirectToSignIn(notice) {
+  const target = new URL("index.html", window.location.href);
+  target.searchParams.set("notice", notice);
+  target.hash = "signin";
+  window.location.replace(target.href);
+}
+
+function cleanCurrentAuthReturn() {
+  history.replaceState(history.state, "", cleanAuthReturnUrl(window.location.href));
+}
+
+async function handleSignup(form) {
+  const formData = new FormData(form);
+  const email = String(formData.get("email") || "").trim();
+  const password = String(formData.get("password") || "");
+  signupEmail = email;
+  if (signupEmailInput) signupEmailInput.value = email;
+
+  setFormBusy(form, true, "Creating your account…");
+  try {
+    if (!supabase) throw new Error("client-unavailable");
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: `${window.location.origin}/` }
+    });
+
+    if (error) {
+      const feedback = authErrorMessage(error, "signup");
+      if (feedback.kind === "neutral") {
+        showView("verify");
+        setMessage(document.querySelector('#view-verify [data-message]'), feedback.message);
+      } else {
+        setMessage(form.querySelector("[data-message]"), feedback.message, "error");
+      }
+      return;
+    }
+
+    if (data.session) {
+      const result = await getVerifiedUser(supabase.auth);
+      if (result.user) {
+        redirectToDashboard();
+        return;
+      }
+    }
+
+    showView("verify");
+    setMessage(
+      document.querySelector('#view-verify [data-message]'),
+      "If this email address can be registered, a confirmation link will be sent. Check your inbox and spam folder."
+    );
+  } catch (error) {
+    const feedback = authErrorMessage(error, "signup");
+    setMessage(form.querySelector("[data-message]"), feedback.message, feedback.kind);
+  } finally {
+    setFormBusy(form, false);
+  }
+}
+
+async function handleSignin(form) {
+  const formData = new FormData(form);
+  const email = String(formData.get("email") || "").trim();
+  const password = String(formData.get("password") || "");
+
+  setFormBusy(form, true, "Signing in…");
+  try {
+    if (!supabase) throw new Error("client-unavailable");
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      const feedback = authErrorMessage(error, "signin");
+      setMessage(form.querySelector("[data-message]"), feedback.message, feedback.kind);
+      return;
+    }
+
+    const result = await getVerifiedUser(supabase.auth);
+    if (!result.user) {
+      setMessage(
+        form.querySelector("[data-message]"),
+        "We couldn't confirm your sign-in. Check your details and verify your email if you recently registered.",
+        "error"
+      );
+      return;
+    }
+
+    redirectToDashboard();
+  } catch (error) {
+    const feedback = authErrorMessage(error, "signin");
+    setMessage(form.querySelector("[data-message]"), feedback.message, feedback.kind);
+  } finally {
+    setFormBusy(form, false);
+  }
+}
+
+async function handleResendVerification(form) {
+  const formData = new FormData(form);
+  const email = String(formData.get("email") || "").trim();
+  signupEmail = email;
+
+  setFormBusy(form, true, "Requesting a confirmation email…");
+  try {
+    if (!supabase) throw new Error("client-unavailable");
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/` }
+    });
+    const feedback = error
+      ? authErrorMessage(error, "resend")
+      : {
+          kind: "info",
+          message: "If this address has a pending signup, a confirmation email will be sent. Check your inbox and spam folder."
+        };
+    setMessage(form.querySelector("[data-message]"), feedback.message, feedback.kind);
+  } catch (error) {
+    const feedback = authErrorMessage(error, "resend");
+    setMessage(form.querySelector("[data-message]"), feedback.message, feedback.kind);
+  } finally {
+    setFormBusy(form, false);
+  }
+}
+
+async function handleSignupConfirmationReturn() {
+  showView("verify", false, false);
+  setMessage(document.querySelector('#view-verify [data-message]'), "Checking your confirmation link…", "loading");
+  await processSignupConfirmationReturn({
+    auth: supabase?.auth,
+    authReturn: initialAuthReturn,
+    href: window.location.href,
+    cleanUrl: cleanCurrentAuthReturn,
+    showFeedback: (message) => {
+      handlingAuthReturn = false;
+      showView("verify", false, false);
+      setMessage(document.querySelector('#view-verify [data-message]'), message, "error");
+    },
+    showDashboard: () => {
+      handlingAuthReturn = false;
+      redirectToDashboard();
+    }
+  });
+}
+
+function restoreViewFromLocation() {
+  if (handlingAuthReturn) return;
+  const requested = views.find((view) => view.dataset.view === location.hash.slice(1)) ?? views[0];
+  const current = views.find((view) => !view.hidden);
+  if (requested && requested !== current) showView(requested.dataset.view, false);
+}
+
+function showRedirectNotice() {
+  const url = new URL(window.location.href);
+  const notice = url.searchParams.get("notice");
+  const messages = {
+    "verified-email-required": "Sign in with an account that has a confirmed email address to access the dashboard.",
+    "session-check-failed": "We couldn't verify your sign-in. Please sign in again."
+  };
+
+  if (!messages[notice]) return;
+  setMessage(document.querySelector('#view-signin [data-message]'), messages[notice], "error");
+  url.searchParams.delete("notice");
+  history.replaceState(history.state, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+async function protectDashboard() {
+  const dashboard = document.querySelector("[data-dashboard-app]");
+  const status = document.querySelector("[data-access-status]");
+  if (!dashboard || !status) return;
+
+  await checkDashboardAccess({
+    auth: supabase?.auth,
+    redirectToSignIn,
+    showDashboard: () => {
+      dashboard.hidden = false;
+      status.hidden = true;
+    }
+  });
 }
 
 document.addEventListener("click", (event) => {
@@ -91,15 +286,9 @@ document.addEventListener("click", (event) => {
   if (unavailable) {
     const view = unavailable.closest("[data-view]");
     const target = view?.querySelector("[data-message]") ?? document.querySelector("[data-global-message]");
-    setMessage(target, `${unavailable.dataset.unavailable} is not connected yet. No request was made and no account action was performed.`);
+    setMessage(target, `${unavailable.dataset.unavailable} is not connected in Module 03.`);
   }
 });
-
-function restoreViewFromLocation() {
-  const requested = views.find((view) => view.dataset.view === location.hash.slice(1)) ?? views[0];
-  const current = views.find((view) => !view.hidden);
-  if (requested && requested !== current) showView(requested.dataset.view, false);
-}
 
 window.addEventListener("popstate", restoreViewFromLocation);
 window.addEventListener("hashchange", restoreViewFromLocation);
@@ -116,6 +305,11 @@ document.querySelectorAll("[data-local-form]").forEach((form) => {
     if (message) setMessage(message, "");
     input.removeAttribute("aria-invalid");
     input.setCustomValidity("");
+
+    if (form.id === "resend-verification-form" && input.name === "email") {
+      signupEmail = input.value.trim();
+    }
+
     const confirm = form.querySelector('[name="confirm"], [name="confirmPassword"]');
     const password = form.querySelector('[name="password"], [name="newPassword"]');
     if (confirm && password) {
@@ -128,8 +322,6 @@ document.querySelectorAll("[data-local-form]").forEach((form) => {
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    const submit = form.querySelector('button[type="submit"]');
-    const message = form.querySelector("[data-message]");
     const confirm = form.querySelector('[name="confirm"], [name="confirmPassword"]');
     const password = form.querySelector('[name="password"], [name="newPassword"]');
 
@@ -145,24 +337,36 @@ document.querySelectorAll("[data-local-form]").forEach((form) => {
     }
 
     if (!form.reportValidity()) return;
-    if (submit) submit.disabled = true;
-
     if (form.id === "signup-form") {
-      signupEmail = new FormData(form).get("email").toString().trim();
-      form.querySelectorAll('input[type="password"]').forEach((input) => { input.value = ""; });
-      showView("verify");
-    } else if (form.id === "signin-form") {
-      setMessage(message, "Sign-in is not connected yet. No credentials were sent and no account was accessed.");
-    } else if (form.id === "recovery-form") {
-      setMessage(message, "Password recovery is not connected yet. No email was sent. This message does not indicate whether an account exists.");
-    } else if (form.id === "new-password-form") {
-      setMessage(message, "Local checks passed, but no recovery session is present. Your password was not changed; recovery will be connected in a later module.");
-    } else if (form.id === "change-password-form") {
-      setMessage(message, "Password changes are not connected yet. The current password was not checked and no password was changed.");
+      void handleSignup(form);
+      return;
+    }
+    if (form.id === "signin-form") {
+      void handleSignin(form);
+      return;
+    }
+    if (form.id === "resend-verification-form") {
+      void handleResendVerification(form);
+      return;
     }
 
-    if (submit) submit.disabled = false;
+    const message = form.querySelector("[data-message]");
+    if (form.id === "recovery-form") {
+      setMessage(message, "Password recovery will be available in a later module. No email was sent.");
+    } else if (form.id === "new-password-form") {
+      setMessage(message, "Password changes will be available in a later module. No password was changed.");
+    } else if (form.id === "change-password-form") {
+      setMessage(message, "Password changes will be available in a later module. No password was changed.");
+    }
   });
 });
 
-showView(location.hash.slice(1) || "signin", false, Boolean(location.hash));
+if (document.body.classList.contains("dashboard-page")) {
+  void protectDashboard();
+} else if (initialAuthReturn.isAuthReturn) {
+  void handleSignupConfirmationReturn();
+} else {
+  const initialView = location.hash.slice(1) || "signin";
+  showView(initialView, false, Boolean(location.hash));
+  showRedirectNotice();
+}

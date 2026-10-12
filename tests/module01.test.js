@@ -16,11 +16,14 @@ test("auth views and navigation links resolve", () => {
   assert.doesNotMatch(html, /Preview the new-password form/);
 });
 
-test("dashboard renders seven unavailable values and a single explanatory note", () => {
+test("dashboard placeholders, explanatory note, and fail-closed shell are present", () => {
   const html = read("dashboard.html");
-  assert.equal((html.match(/<dd>—<\/dd>/g) || []).length, 7);
+  const unavailableValues = [...html.matchAll(/<dd>(.*?)<\/dd>/gs)].map((match) => match[1]);
+  assert.deepEqual(unavailableValues, Array(7).fill("\u2014"));
   assert.equal((html.match(/Account details will appear when authentication is connected\./g) || []).length, 1);
   assert.doesNotMatch(html, /Available after authentication is connected/);
+  assert.match(html, /data-dashboard-app hidden/);
+  assert.match(html, /data-access-status role="status"/);
 
   const css = read("styles/dashboard.css");
   const labelSize = Number(css.match(/\.account-list dt[^\n]*font-size:\s*([\d.]+)rem/)[1]);
@@ -28,18 +31,18 @@ test("dashboard renders seven unavailable values and a single explanatory note",
   assert.ok(valueSize <= labelSize, "account values should be visually secondary to labels");
 });
 
-test("local form and password safeguards remain in place", () => {
+test("module 01 navigation and password safeguards remain intact", () => {
   const html = read("index.html") + read("dashboard.html");
   const js = read("scripts/script.js");
   assert.equal((html.match(/<form\b/g) || []).length, (html.match(/<form[^>]*data-local-form/g) || []).length);
+  assert.ok([...html.matchAll(/<form\b[^>]*>/g)].every((match) => /method="post"/.test(match[0])));
   assert.match(js, /event\.preventDefault\(\)/);
   assert.match(js, /clearViewPasswords\(previous\)/);
   assert.match(js, /window\.addEventListener\("popstate", restoreViewFromLocation\)/);
-  assert.match(js, /signupEmail\s*=\s*new FormData\(form\)\.get\("email"\)/);
-  assert.match(js, /showView\("verify"\)/);
+  assert.match(js, /showView\("verify"/);
   assert.doesNotMatch(js, /\.innerHTML\s*=/);
-  assert.doesNotMatch(js, /\bfetch\s*\(/);
-  assert.doesNotMatch(js, /\bsupabase\.(?:auth|from|storage|functions)\b/);
+  assert.match(js, /supabase\.auth\.signUp\(/);
+  assert.match(js, /supabase\.auth\.signInWithPassword\(/);
 });
 
 test("local stylesheet, script, and image references exist", () => {
@@ -51,4 +54,5 @@ test("local stylesheet, script, and image references exist", () => {
       assert.ok(fs.existsSync(path.join(root, localPath)), `${file} references missing ${localPath}`);
     }
   }
+  assert.ok(fs.existsSync(path.join(root, "scripts/auth-helpers.mjs")));
 });

@@ -1,4 +1,5 @@
 .dashboard-page { background: #f5f6f8; }
+.dashboard-access-status { width: min(100% - 2rem, 52rem); margin: 3rem auto; text-align: center; }
 .site-header {
   display: flex;
   min-height: 4.25rem;
