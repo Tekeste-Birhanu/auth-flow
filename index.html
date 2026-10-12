@@ -47,10 +47,18 @@
             <input id="signup-email" name="email" type="email" autocomplete="email" required>
             <label for="signup-password">Password</label>
             <div class="password-field">
-              <input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="8" aria-describedby="signup-password-hint" required>
+              <input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="8" aria-describedby="signup-password-hint signup-password-rules" data-password-rules required>
               <button class="visibility-toggle" type="button" data-password-toggle="signup-password" aria-label="Show password">Show</button>
             </div>
-            <p class="field-hint" id="signup-password-hint">Use at least 8 characters.</p>
+            <p class="field-hint" id="signup-password-hint">Your password must meet each requirement:</p>
+            <ul class="password-requirements" id="signup-password-rules" aria-label="Password requirements">
+              <li data-password-rule="length"><span aria-hidden="true">○</span> At least 8 characters</li>
+              <li data-password-rule="lowercase"><span aria-hidden="true">○</span> A lowercase letter</li>
+              <li data-password-rule="uppercase"><span aria-hidden="true">○</span> An uppercase letter</li>
+              <li data-password-rule="digit"><span aria-hidden="true">○</span> A number</li>
+              <li data-password-rule="symbol"><span aria-hidden="true">○</span> A symbol</li>
+            </ul>
+            <p class="field-hint" data-password-rules-status aria-live="polite">0 of 5 requirements met.</p>
             <label for="signup-confirm">Confirm password</label>
             <div class="password-field">
               <input id="signup-confirm" name="confirm" type="password" autocomplete="new-password" required>

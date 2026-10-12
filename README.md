@@ -142,15 +142,15 @@ The application is built incrementally, with each module establishing a foundati
 
 ## Status
 
-**Current phase:** Module 03 — Email and Password Authentication (manual verification pending)
+**Current phase:** Module 04 — Session and Dashboard (manual verification pending)
 
-**Next:** Module 04 — Session and Dashboard
+**Next:** Module 05 — OAuth Authentication
 
 This is a learning and portfolio project focused on understanding authentication flows and building a maintainable application with minimal tooling.
 
 ## Module 01 implementation notes
 
-Module 01 provides the authentication and account screens as a UI foundation. Module 03 connects email/password registration, sign-in, confirmation emails, and a verified-user dashboard gate. OAuth, password recovery, password changes, and broader session management remain in later modules.
+Module 01 provides the authentication and account screens as a UI foundation. Module 03 connects email/password registration, sign-in, confirmation emails, and the verified-user dashboard gate. Module 04 adds session management, account details, logout, and password changes. OAuth and password recovery remain in later modules.
 
 Start the local static server with `npm start` and open the URL printed in the terminal (by default, `http://127.0.0.1:4173`). The server uses Node's built-in HTTP module, so it adds no runtime dependency or build step.
 
@@ -183,3 +183,11 @@ The dashboard shell starts hidden. It is shown only after Supabase confirms an a
 Duplicate signup and resend responses use neutral messages so the interface does not unnecessarily reveal whether an email address has an account. Confirmation links that return an Auth error, contain malformed callback data, or fail user verification are treated as unsuccessful. Auth tokens and error details are removed from the address bar after processing. The app maps known errors to safe messages instead of showing raw Auth responses.
 
 Run `npm test` for automated checks. Complete the live registration, email-link, invalid/expired-link, sign-in, and direct-dashboard-access checks manually in a browser using a test email address. The hosted default Supabase email sender is suitable for initial testing but has a low sending limit; configure custom SMTP if more frequent testing is needed.
+
+### Module 04 session and dashboard
+
+The Supabase client persists and restores sessions and refreshes access tokens through the SDK. The application listens for initial session restoration, sign-in, sign-out, token refresh, and user updates. The dashboard remains hidden until the saved session is checked with Supabase and the user has a confirmed email address. Authenticated users with a confirmed email are redirected from the sign-in page to the dashboard.
+
+The dashboard displays the verified user's email, ID, email verification status, provider, creation date, last sign-in, and current session expiration. Sign-out clears the Supabase session. Password changes are offered only to users with an email identity. The project has **Require current password when updating** enabled and **Secure password change** disabled, so the form submits the current password with the new password using `updateUser()`; no reauthentication email code is needed.
+
+Run `npm test` for automated checks. Manually verify persisted sessions after reload, auth changes across tabs, token refresh and expired-session redirects, logout, account values, and successful and rejected password changes in a browser.

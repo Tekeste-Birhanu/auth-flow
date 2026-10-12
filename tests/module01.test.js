@@ -16,12 +16,11 @@ test("auth views and navigation links resolve", () => {
   assert.doesNotMatch(html, /Preview the new-password form/);
 });
 
-test("dashboard placeholders, explanatory note, and fail-closed shell are present", () => {
+test("dashboard account fields retain placeholders until a verified session populates them", () => {
   const html = read("dashboard.html");
-  const unavailableValues = [...html.matchAll(/<dd>(.*?)<\/dd>/gs)].map((match) => match[1]);
+  const unavailableValues = [...html.matchAll(/<dd\b[^>]*>(.*?)<\/dd>/gs)].map((match) => match[1]);
   assert.deepEqual(unavailableValues, Array(7).fill("\u2014"));
-  assert.equal((html.match(/Account details will appear when authentication is connected\./g) || []).length, 1);
-  assert.doesNotMatch(html, /Available after authentication is connected/);
+  assert.equal((html.match(/data-account-value=/g) || []).length, 7);
   assert.match(html, /data-dashboard-app hidden/);
   assert.match(html, /data-access-status role="status"/);
 

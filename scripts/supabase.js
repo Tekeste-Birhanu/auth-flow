@@ -10,7 +10,13 @@ if (!isConfigured) {
   console.error("Supabase SDK failed to load. Check the SDK script path and load order.");
 } else {
   try {
-    client = sdk.createClient(supabaseConfig.url, supabaseConfig.publishableKey);
+    client = sdk.createClient(supabaseConfig.url, supabaseConfig.publishableKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true
+      }
+    });
   } catch {
     console.error("Supabase client initialization failed. Check the project URL and publishable key format.");
   }
