@@ -3,10 +3,14 @@ import {
   authErrorMessage,
   cleanAuthReturnUrl,
   getVerifiedUser,
+  handleSignupResponse,
   handleSignupConfirmationReturn as processSignupConfirmationReturn,
+  handleOAuthReturn as processOAuthReturn,
   inspectAuthReturnUrl,
+  oauthErrorMessage,
   protectDashboard as checkDashboardAccess,
-  redirectVerifiedUser
+  redirectVerifiedUser,
+  signInWithOAuth
 } from "./auth-helpers.mjs";
 import {
   accountValues,
@@ -15,6 +19,7 @@ import {
   listenForAuthChanges,
   performSignOut,
   passwordChangeMessage,
+  setPassword,
   supportsPasswordChange
 } from "./session-helpers.mjs";
 
@@ -129,30 +134,19 @@ async function handleSignup(form) {
       options: { emailRedirectTo: `${window.location.origin}/` }
     });
 
-    if (error) {
-      const feedback = authErrorMessage(error, "signup");
-      if (feedback.kind === "neutral") {
+    await handleSignupResponse({
+      auth: supabase.auth,
+      data,
+      error,
+      showDashboard: redirectToDashboard,
+      showVerification(message) {
         showView("verify");
-        setMessage(document.querySelector('#view-verify [data-message]'), feedback.message);
-      } else {
-        setMessage(form.querySelector("[data-message]"), feedback.message, "error");
+        setMessage(document.querySelector('#view-verify [data-message]'), message, "info");
+      },
+      showErrorFeedback(feedback) {
+        setMessage(form.querySelector("[data-message]"), feedback.message, feedback.kind);
       }
-      return;
-    }
-
-    if (data.session) {
-      const result = await getVerifiedUser(supabase.auth);
-      if (result.user) {
-        redirectToDashboard();
-        return;
-      }
-    }
-
-    showView("verify");
-    setMessage(
-      document.querySelector('#view-verify [data-message]'),
-      "If this email address can be registered, a confirmation link will be sent. Check your inbox and spam folder."
-    );
+    });
   } catch (error) {
     const feedback = authErrorMessage(error, "signup");
     setMessage(form.querySelector("[data-message]"), feedback.message, feedback.kind);
@@ -243,6 +237,42 @@ async function handleSignupConfirmationReturn() {
   });
 }
 
+async function handleOAuthCallback() {
+  await processOAuthReturn({
+    auth: supabase?.auth,
+    authReturn: initialAuthReturn,
+    cleanUrl: cleanCurrentAuthReturn,
+    showFeedback: (message) => {
+      handlingAuthReturn = false;
+      showView("signin", false, false);
+      setMessage(document.querySelector('#view-signin [data-message]'), message, "error");
+    },
+    showDashboard: () => {
+      handlingAuthReturn = false;
+      redirectToDashboard();
+    }
+  });
+}
+
+async function startOAuthSignIn(button) {
+  const provider = button.dataset.oauthProvider;
+  const message = button.closest("[data-view]")?.querySelector("[data-message]");
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+
+  const result = await signInWithOAuth(
+    supabase?.auth,
+    provider,
+    `${window.location.origin}/`
+  );
+
+  if (result.error) {
+    setMessage(message, oauthErrorMessage(result.error), "error");
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+  }
+}
+
 function restoreViewFromLocation() {
   if (handlingAuthReturn) return;
   const requested = views.find((view) => view.dataset.view === location.hash.slice(1)) ?? views[0];
@@ -255,6 +285,7 @@ function showRedirectNotice() {
   const notice = url.searchParams.get("notice");
   const messages = {
     "verified-email-required": "Sign in with an account that has a confirmed email address to access the dashboard.",
+    "provider-email-required": "Your sign-in provider must supply a confirmed email address to access the dashboard.",
     "session-check-failed": "We couldn't verify your sign-in. Please sign in again.",
     "signed-out": "You have signed out."
   };
@@ -280,18 +311,32 @@ async function protectDashboard() {
         value.textContent = values[value.dataset.accountValue] || "—";
       });
       const passwordForm = document.querySelector("#change-password-form");
-      const passwordIntro = document.querySelector("[data-password-intro]");
-      if (passwordForm && passwordIntro) {
-        const available = supportsPasswordChange(user);
-        passwordForm.hidden = !available;
-        passwordIntro.textContent = available
-          ? "Enter your current password and choose a new password."
-          : "Password changes are available only for accounts with an email and password sign-in.";
-      }
+      configurePasswordForm(user, passwordForm);
       dashboard.hidden = false;
       status.hidden = true;
     }
   });
+}
+
+function configurePasswordForm(user, form) {
+  if (!form) return;
+  const hasPassword = supportsPasswordChange(user);
+  const currentPasswordField = form.querySelector("[data-current-password-field]");
+  const currentPasswordInput = form.querySelector('[name="currentPassword"]');
+  const title = document.querySelector("[data-password-title]");
+  const intro = document.querySelector("[data-password-intro]");
+  const submit = form.querySelector("[data-password-submit]");
+
+  form.dataset.passwordMode = hasPassword ? "change" : "set";
+  if (currentPasswordField) currentPasswordField.hidden = !hasPassword;
+  if (currentPasswordInput) currentPasswordInput.required = hasPassword;
+  if (title) title.textContent = hasPassword ? "Change Password" : "Set Password";
+  if (intro) {
+    intro.textContent = hasPassword
+      ? "Enter your current password and choose a new password."
+      : "Add a password to sign in with your email as well as your connected provider.";
+  }
+  if (submit) submit.textContent = hasPassword ? "Update password" : "Set password";
 }
 
 async function handleSignOut() {
@@ -314,15 +359,33 @@ async function handleChangePassword(form) {
   const formData = new FormData(form);
   const currentPassword = String(formData.get("currentPassword") || "");
   const newPassword = String(formData.get("newPassword") || "");
-  setFormBusy(form, true, "Updating your password…");
+  const isSettingPassword = form.dataset.passwordMode === "set";
+  setFormBusy(form, true, isSettingPassword ? "Setting your password…" : "Updating your password…");
   try {
     if (!supabase || !currentDashboardUser) throw new Error("session-unavailable");
-    const { error } = await changePassword(supabase.auth, currentDashboardUser, currentPassword, newPassword);
+    const result = isSettingPassword
+      ? await setPassword(supabase.auth, currentDashboardUser, newPassword)
+      : await changePassword(supabase.auth, currentDashboardUser, currentPassword, newPassword);
+    const { data, error } = result;
     if (error) {
       setMessage(form.querySelector("[data-message]"), passwordChangeMessage(error), "error");
       return;
     }
-    setMessage(form.querySelector("[data-message]"), "Your password has been updated.", "success");
+    if (isSettingPassword) {
+      currentDashboardUser = {
+        ...(data?.user || currentDashboardUser),
+        user_metadata: {
+          ...(data?.user?.user_metadata || currentDashboardUser.user_metadata || {}),
+          password_signin_enabled: true
+        }
+      };
+      configurePasswordForm(currentDashboardUser, form);
+    }
+    setMessage(
+      form.querySelector("[data-message]"),
+      isSettingPassword ? "Password sign-in is now set up for this account." : "Your password has been updated.",
+      "success"
+    );
   } catch (error) {
     setMessage(form.querySelector("[data-message]"), passwordChangeMessage(error), "error");
   } finally {
@@ -347,8 +410,9 @@ function subscribeToAuthChanges() {
       return;
     }
 
+    // The sign-in form verifies SIGNED_IN itself; avoid a concurrent duplicate getUser() check.
     if (initialAuthReturn.isAuthReturn || !session ||
-        !["INITIAL_SESSION", "SIGNED_IN", "TOKEN_REFRESHED", "USER_UPDATED"].includes(event)) return;
+        !["INITIAL_SESSION", "TOKEN_REFRESHED", "USER_UPDATED"].includes(event)) return;
     await redirectVerifiedUser(supabase.auth, redirectToDashboard);
   });
 }
@@ -369,6 +433,12 @@ document.addEventListener("click", (event) => {
     input.type = visible ? "text" : "password";
     toggle.textContent = visible ? "Hide" : "Show";
     toggle.setAttribute("aria-label", `${visible ? "Hide" : "Show"} ${input.labels[0]?.textContent.toLowerCase() ?? "password"}`);
+    return;
+  }
+
+  const oauthButton = event.target.closest("[data-oauth-provider]");
+  if (oauthButton) {
+    void startOAuthSignIn(oauthButton);
     return;
   }
 
@@ -488,8 +558,10 @@ function updatePasswordRequirements(input) {
 subscribeToAuthChanges();
 if (document.body.classList.contains("dashboard-page")) {
   void protectDashboard();
-} else if (initialAuthReturn.isAuthReturn) {
+} else if (initialAuthReturn.isSignupConfirmation) {
   void handleSignupConfirmationReturn();
+} else if (initialAuthReturn.isOAuthReturn) {
+  void handleOAuthCallback();
 } else {
   const initialView = location.hash.slice(1) || "signin";
   showView(initialView, false, Boolean(location.hash));

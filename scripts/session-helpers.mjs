@@ -48,7 +48,8 @@ export function accountValues(user, session) {
 }
 
 export function supportsPasswordChange(user) {
-  return Array.isArray(user?.app_metadata?.providers) && user.app_metadata.providers.includes("email") ||
+  return user?.user_metadata?.password_signin_enabled === true ||
+    Array.isArray(user?.app_metadata?.providers) && user.app_metadata.providers.includes("email") ||
     Array.isArray(user?.identities) && user.identities.some((identity) => identity.provider === "email");
 }
 
@@ -70,16 +71,33 @@ export async function performSignOut(auth) {
 }
 
 export async function changePassword(auth, user, currentPassword, newPassword) {
-  if (!supportsPasswordChange(user) || !user?.email) {
-    return { error: { code: "password_provider_unavailable" } };
+  if (!user?.email) {
+    return { error: { code: "password_identity_unavailable" } };
+  }
+  if (!currentPassword) {
+    return { error: { code: "current_password_required" } };
   }
   return auth.updateUser({ password: newPassword, current_password: currentPassword });
 }
 
+export async function setPassword(auth, user, newPassword) {
+  if (!user?.email || !user?.email_confirmed_at) {
+    return { error: { code: "password_identity_unavailable" } };
+  }
+
+  return auth.updateUser({
+    password: newPassword,
+    data: { ...(user.user_metadata || {}), password_signin_enabled: true }
+  });
+}
+
 export function passwordChangeMessage(error) {
   const code = String(error?.code || "").toLowerCase();
-  if (code === "password_provider_unavailable") {
-    return "Password changes are available only for accounts with an email and password sign-in.";
+  if (code === "password_identity_unavailable") {
+    return "A confirmed email address is required to set or change a password.";
+  }
+  if (code === "current_password_required") {
+    return "Enter your current password and try again.";
   }
   if (code === "weak_password") {
     return "Choose a password that meets the project's password requirements.";
@@ -91,10 +109,10 @@ export function passwordChangeMessage(error) {
     return "The current password is incorrect. Check it and try again.";
   }
   if (["reauthentication_needed", "reauthentication_required"].includes(code)) {
-    return "Sign in again before changing your password.";
+    return "Sign in again before setting or changing your password.";
   }
   if (error?.name === "AuthRetryableFetchError" || error instanceof TypeError) {
     return "Unable to reach the authentication service. Check your connection and try again.";
   }
-  return "The password could not be changed. Check the current password and try again.";
+  return "The password could not be updated. Check the password requirements and try again.";
 }

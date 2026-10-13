@@ -33,13 +33,15 @@
         </dl>
       </section>
       <section class="dashboard-section password-section" aria-labelledby="password-title">
-        <h2 id="password-title">Change password</h2>
+        <h2 id="password-title" data-password-title>Change Password</h2>
         <p class="intro" data-password-intro>Enter your current password and choose a new password.</p>
-        <form id="change-password-form" method="post" data-local-form>
-          <label for="current-password">Current password</label>
-          <div class="password-field">
-            <input id="current-password" name="currentPassword" type="password" autocomplete="current-password" required>
-            <button class="visibility-toggle" type="button" data-password-toggle="current-password" aria-label="Show current password">Show</button>
+        <form id="change-password-form" method="post" data-local-form data-password-mode="change">
+          <div data-current-password-field>
+            <label for="current-password">Current password</label>
+            <div class="password-field">
+              <input id="current-password" name="currentPassword" type="password" autocomplete="current-password" required>
+              <button class="visibility-toggle" type="button" data-password-toggle="current-password" aria-label="Show current password">Show</button>
+            </div>
           </div>
           <label for="dashboard-new-password">New password</label>
           <div class="password-field">
@@ -60,7 +62,7 @@
             <input id="dashboard-confirm-password" name="confirmPassword" type="password" autocomplete="new-password" required>
             <button class="visibility-toggle" type="button" data-password-toggle="dashboard-confirm-password" aria-label="Show password">Show</button>
           </div>
-          <button class="button button-primary" type="submit">Update password</button>
+          <button class="button button-primary" type="submit" data-password-submit>Update password</button>
           <p class="message" data-message role="status" aria-live="polite"></p>
         </form>
       </section>
