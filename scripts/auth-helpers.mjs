@@ -1,5 +1,9 @@
 const AUTH_CALLBACK_KEYS = ["access_token", "error", "error_code", "error_description", "code"];
 
+export function shouldDisableResendButton(email, busy = false) {
+  return busy || !String(email || "").trim();
+}
+
 export function inspectAuthReturnUrl(href) {
   const url = new URL(href);
   const params = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : "");

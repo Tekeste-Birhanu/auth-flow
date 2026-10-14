@@ -98,11 +98,15 @@
         </p>
         <form id="resend-verification-form" method="post" data-local-form>
           <label for="verify-email">Email address</label>
-          <input id="verify-email" name="email" type="email" autocomplete="email" required>
-          <button class="button button-secondary button-full" type="submit">Resend verification email</button>
+          <input id="verify-email" name="email" type="email" autocomplete="email"
+            aria-describedby="verify-email-hint" readonly required>
+          <p class="field-hint" id="verify-email-hint">To use a different email, return to signup below.</p>
+          <button class="button button-secondary button-full" type="submit" disabled>Resend verification email</button>
           <p class="message" data-message role="status" aria-live="polite"></p>
         </form>
-        <p class="switch-copy"><a href="#signin" data-view-link="signin">Return to sign in</a></p>
+        <p class="switch-copy"><a href="#signup" data-view-link="signup">Change email</a> ·
+          <a href="#signin" data-view-link="signin">Return to sign in</a>
+        </p>
       </section>
 
       <section class="auth-view" id="view-recovery" data-view="recovery" aria-labelledby="recovery-title" hidden>

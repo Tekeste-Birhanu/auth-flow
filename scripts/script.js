@@ -10,6 +10,7 @@ import {
   oauthErrorMessage,
   protectDashboard as checkDashboardAccess,
   redirectVerifiedUser,
+  shouldDisableResendButton,
   signInWithOAuth
 } from "./auth-helpers.mjs";
 import {
@@ -74,10 +75,14 @@ function showView(name, updateHistory = true, moveFocus = true) {
   if (selected.dataset.view === "verify" && signupEmailInput) {
     if (signupEmail && !signupEmailInput.value) signupEmailInput.value = signupEmail;
     if (signupEmailInput.value) signupEmail = signupEmailInput.value.trim();
+    const resendButton = selected.querySelector('#resend-verification-form button[type="submit"]');
+    if (resendButton) {
+      resendButton.disabled = shouldDisableResendButton(signupEmailInput.value);
+    }
     if (!signupEmailInput.value) {
       setMessage(
         selected.querySelector("[data-message]"),
-        "Enter the email address you used to sign up to request a confirmation link."
+        "No signup email is available. Return to signup to enter your email address first."
       );
     }
   }
@@ -94,7 +99,11 @@ function showView(name, updateHistory = true, moveFocus = true) {
 
 function setFormBusy(form, busy, message = "") {
   const submit = form.querySelector('button[type="submit"]');
-  if (submit) submit.disabled = busy;
+  if (submit) {
+    submit.disabled = form.id === "resend-verification-form"
+      ? shouldDisableResendButton(signupEmailInput?.value, busy)
+      : busy;
+  }
   form.setAttribute("aria-busy", String(busy));
   if (message) setMessage(form.querySelector("[data-message]"), message, "loading");
 }
@@ -192,6 +201,13 @@ async function handleSignin(form) {
 async function handleResendVerification(form) {
   const formData = new FormData(form);
   const email = String(formData.get("email") || "").trim();
+  if (!email) {
+    setMessage(
+      form.querySelector("[data-message]"),
+      "No signup email is available. Return to signup to enter your email address first."
+    );
+    return;
+  }
   signupEmail = email;
 
   setFormBusy(form, true, "Requesting a confirmation email…");
@@ -473,10 +489,6 @@ document.querySelectorAll("[data-local-form]").forEach((form) => {
 
     if (input.matches("[data-password-rules]")) {
       updatePasswordRequirements(input);
-    }
-
-    if (form.id === "resend-verification-form" && input.name === "email") {
-      signupEmail = input.value.trim();
     }
 
     const confirm = form.querySelector('[name="confirm"], [name="confirmPassword"]');

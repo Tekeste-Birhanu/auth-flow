@@ -224,8 +224,21 @@ test("signup response handling sends pending and obfuscated results to Verify wi
   assert.match(signupView, /href="#signin" data-view-link="signin">Sign in<\/a>/);
   assert.equal((signupView.match(/class="switch-copy(?:\s|"|')/g) || []).length, 1);
   assert.match(verifyView, /id="resend-verification-form"/);
+  assert.match(verifyView, /id="verify-email"[^>]*readonly/);
+  assert.match(verifyView, /id="verify-email-hint"/);
+  assert.match(verifyView, /type="submit" disabled>Resend verification email<\/button>/);
+  assert.match(verifyView, /href="#signup" data-view-link="signup">Change email<\/a>/);
   assert.match(verifyView, /href="#signin" data-view-link="signin"/);
   assert.doesNotMatch(html, /Email and password authentication is provided by Supabase\./);
+});
+
+test("verification resend is disabled without an address and while submitting", async () => {
+  const { shouldDisableResendButton } = await authHelpersPromise;
+
+  assert.equal(shouldDisableResendButton(""), true);
+  assert.equal(shouldDisableResendButton("   "), true);
+  assert.equal(shouldDisableResendButton("learner@example.test"), false);
+  assert.equal(shouldDisableResendButton("learner@example.test", true), true);
 });
 
 test("actual signup errors stay on the signup view with safe actionable feedback", async () => {
