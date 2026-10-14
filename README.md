@@ -142,15 +142,15 @@ The application is built incrementally, with each module establishing a foundati
 
 ## Status
 
-**Current phase:** Module 04 — Session and Dashboard (manual verification pending)
+**Current phase:** Module 05 — OAuth Authentication (manual provider verification pending)
 
-**Next:** Module 05 — OAuth Authentication
+**Next:** Module 06 — Password Recovery
 
 This is a learning and portfolio project focused on understanding authentication flows and building a maintainable application with minimal tooling.
 
 ## Module 01 implementation notes
 
-Module 01 provides the authentication and account screens as a UI foundation. Module 03 connects email/password registration, sign-in, confirmation emails, and the verified-user dashboard gate. Module 04 adds session management, account details, logout, and password changes. OAuth and password recovery remain in later modules.
+Module 01 provides the authentication and account screens as a UI foundation. Module 03 connects email/password registration, sign-in, confirmation emails, and the verified-user dashboard gate. Module 04 adds session management, account details, logout, and password changes. Module 05 connects Google and GitHub sign-in.
 
 Start the local static server with `npm start` and open the URL printed in the terminal (by default, `http://127.0.0.1:4173`). The server uses Node's built-in HTTP module, so it adds no runtime dependency or build step.
 
@@ -188,6 +188,14 @@ Run `npm test` for automated checks. Complete the live registration, email-link,
 
 The Supabase client persists and restores sessions and refreshes access tokens through the SDK. The application listens for initial session restoration, sign-in, sign-out, token refresh, and user updates. The dashboard remains hidden until the saved session is checked with Supabase and the user has a confirmed email address. Authenticated users with a confirmed email are redirected from the sign-in page to the dashboard.
 
-The dashboard displays the verified user's email, ID, email verification status, provider, creation date, last sign-in, and current session expiration. Sign-out clears the Supabase session. Password changes are offered only to users with an email identity. The project has **Require current password when updating** enabled and **Secure password change** disabled, so the form submits the current password with the new password using `updateUser()`; no reauthentication email code is needed.
+The dashboard displays the verified user's email, ID, email verification status, provider, creation date, last sign-in, and current session expiration. Sign-out clears the Supabase session. The password section offers **Set Password** to authenticated users without password sign-in and **Change Password** to users who have it. Setting a password for an OAuth account uses the authenticated Supabase client and records a user-metadata display flag; the flag only selects the UI label and does not authorize the operation. Changing an existing password requires the current password in the app form.
 
 Run `npm test` for automated checks. Manually verify persisted sessions after reload, auth changes across tabs, token refresh and expired-session redirects, logout, account values, and successful and rejected password changes in a browser.
+
+### Module 05 OAuth authentication
+
+The Google and GitHub buttons call Supabase Auth's OAuth sign-in method and return to the current app origin. The existing root page is the callback destination; no additional app route is introduced. Supabase JS processes the returned OAuth session, and the app verifies it with `getUser()` before navigating to the dashboard. OAuth users must have an email address and a confirmed email on their Supabase Auth user. A provider-confirmed email passes the existing dashboard gate without a separate app confirmation flow. OAuth errors and cancellations receive safe messages, and callback parameters are removed from the address bar.
+
+Supabase Dashboard settings and provider credentials remain manually configured as described in Module 02. Supabase automatically links matching identities when it can verify they share the same email; the application does not perform manual identity linking.
+
+Run `npm test` for automated OAuth callback and provider-request checks. Manually verify Google and GitHub sign-in, cancel each provider flow, test provider errors, confirm the returned session survives reload, and verify that accounts without an email or confirmed email cannot access the dashboard. Also set a password on a Google/GitHub account, confirm the section switches to **Change Password**, then sign out and verify email/password sign-in reaches the same user ID. Google apps in Testing mode must include the test accounts.

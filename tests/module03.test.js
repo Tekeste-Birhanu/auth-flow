@@ -100,7 +100,9 @@ test("signup confirmation return is consumed and user is checked by the installe
     assert.deepEqual(inspectAuthReturnUrl(initialUrl), {
       isAuthReturn: true,
       isSignupConfirmation: true,
+      isOAuthReturn: false,
       hasAccessToken: true,
+      error: "",
       errorCode: "",
       hasError: false
     });
@@ -159,12 +161,105 @@ test("signup, sign-in, and resend error messages avoid account enumeration and r
   const resend = authErrorMessage({ code: "user_not_found", message: "sensitive backend detail" }, "resend");
 
   assert.equal(duplicate.kind, "neutral");
-  assert.match(duplicate.message, /if this email address can be registered/i);
+  assert.match(duplicate.message, /if registration can be completed/i);
   assert.match(invalid.message, /couldn't sign you in/i);
   assert.match(resend.message, /if this address has a pending signup/i);
   for (const feedback of [duplicate, invalid, resend]) {
     assert.doesNotMatch(feedback.message, /sensitive backend detail/);
   }
+});
+
+test("signup response handling sends pending and obfuscated results to Verify with identical neutral feedback", async () => {
+  const { handleSignupResponse } = await authHelpersPromise;
+  const outcomes = [];
+  const cases = [
+    {
+      name: "ordinary pending registration",
+      data: { user: { email: "learner@example.test", identities: [{ provider: "email" }] }, session: null }
+    },
+    {
+      name: "obfuscated no-session response",
+      data: { user: { email: "learner@example.test", identities: [] }, session: null }
+    },
+    {
+      name: "duplicate response error",
+      data: { user: null, session: null },
+      error: { code: "user_already_exists", message: "private account detail" }
+    }
+  ];
+
+  for (const scenario of cases) {
+    let verificationMessage = "";
+    let verificationShown = false;
+    let dashboardShown = false;
+    let errorMessage = "";
+    const result = await handleSignupResponse({
+      auth: {},
+      ...scenario,
+      showDashboard() { dashboardShown = true; },
+      showVerification(message) { verificationShown = true; verificationMessage = message; },
+      showErrorFeedback(feedback) { errorMessage = feedback.message; }
+    });
+    outcomes.push({ result, verificationMessage, verificationShown, dashboardShown, errorMessage });
+    assert.equal(result.outcome, "ambiguous", scenario.name);
+    assert.equal(verificationShown, true, scenario.name);
+    assert.equal(dashboardShown, false, scenario.name);
+    assert.equal(errorMessage, "", scenario.name);
+    assert.match(verificationMessage, /if registration can be completed/i, scenario.name);
+    assert.match(verificationMessage, /if you don't receive one, try signing in or request another link/i, scenario.name);
+    assert.doesNotMatch(verificationMessage, /private account detail|already registered|already exists/i, scenario.name);
+  }
+
+  assert.equal(outcomes[0].verificationMessage, outcomes[1].verificationMessage);
+  assert.equal(outcomes[0].verificationMessage, outcomes[2].verificationMessage);
+
+  const html = require("node:fs").readFileSync("index.html", "utf8");
+  const signupView = html.match(/<section class="auth-view" id="view-signup"[\s\S]*?<\/section>/)?.[0] || "";
+  const verifyView = html.match(/<section class="auth-view" id="view-verify"[\s\S]*?<\/section>/)?.[0] || "";
+  assert.match(signupView, /<h1[^>]*>Create your account<\/h1>/);
+  assert.match(signupView, /Enter your email and create a password\./);
+  assert.match(signupView, /Password must include:/);
+  assert.equal((signupView.match(/data-password-rule="(?:length|lowercase|uppercase|digit|symbol)"/g) || []).length, 5);
+  assert.match(signupView, /<div class="divider"><span>Or continue with<\/span><\/div>/);
+  assert.match(signupView, /href="#signin" data-view-link="signin">Sign in<\/a>/);
+  assert.equal((signupView.match(/class="switch-copy(?:\s|"|')/g) || []).length, 1);
+  assert.match(verifyView, /id="resend-verification-form"/);
+  assert.match(verifyView, /id="verify-email"[^>]*readonly/);
+  assert.match(verifyView, /id="verify-email-hint"/);
+  assert.match(verifyView, /type="submit" disabled>Resend verification email<\/button>/);
+  assert.match(verifyView, /href="#signup" data-view-link="signup">Change email<\/a>/);
+  assert.match(verifyView, /href="#signin" data-view-link="signin"/);
+  assert.doesNotMatch(html, /Email and password authentication is provided by Supabase\./);
+});
+
+test("verification resend is disabled without an address and while submitting", async () => {
+  const { shouldDisableResendButton } = await authHelpersPromise;
+
+  assert.equal(shouldDisableResendButton(""), true);
+  assert.equal(shouldDisableResendButton("   "), true);
+  assert.equal(shouldDisableResendButton("learner@example.test"), false);
+  assert.equal(shouldDisableResendButton("learner@example.test", true), true);
+});
+
+test("actual signup errors stay on the signup view with safe actionable feedback", async () => {
+  const { handleSignupResponse } = await authHelpersPromise;
+  let errorMessage = "";
+  let verificationShown = false;
+  let dashboardShown = false;
+  const result = await handleSignupResponse({
+    auth: {},
+    data: { user: null, session: null },
+    error: { code: "weak_password", message: "private validation detail" },
+    showDashboard() { dashboardShown = true; },
+    showVerification() { verificationShown = true; },
+    showErrorFeedback(feedback) { errorMessage = feedback.message; }
+  });
+
+  assert.equal(result.outcome, "error");
+  assert.equal(dashboardShown, false);
+  assert.equal(verificationShown, false);
+  assert.match(errorMessage, /password requirements/i);
+  assert.doesNotMatch(errorMessage, /private validation detail/i);
 });
 
 test("dashboard protection stays hidden and redirects on Auth failures and unverified states", async () => {
