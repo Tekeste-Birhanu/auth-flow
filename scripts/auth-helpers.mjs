@@ -1,4 +1,40 @@
 const AUTH_CALLBACK_KEYS = ["access_token", "error", "error_code", "error_description", "code"];
+const RECOVERY_INTENT_KEY = "auth-flow:password-recovery-intent";
+const RECOVERY_INTENT_TTL_MS = 60 * 60 * 1000;
+
+export function markPasswordRecoveryIntent(storage, now = Date.now()) {
+  try {
+    storage?.setItem(RECOVERY_INTENT_KEY, String(now));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function hasPasswordRecoveryIntent(storage, now = Date.now()) {
+  try {
+    const createdAt = Number(storage?.getItem(RECOVERY_INTENT_KEY));
+    if (!Number.isFinite(createdAt) || createdAt <= 0 || createdAt > now || now - createdAt > RECOVERY_INTENT_TTL_MS) {
+      storage?.removeItem(RECOVERY_INTENT_KEY);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearPasswordRecoveryIntent(storage) {
+  try {
+    storage?.removeItem(RECOVERY_INTENT_KEY);
+  } catch {
+    // Storage can be unavailable in restricted browser contexts.
+  }
+}
+
+export function shouldHandleRecoveryReturn(authReturn, hasPendingIntent, hash = "") {
+  return Boolean(authReturn?.isRecoveryReturn || hasPendingIntent || hash === "#new-password");
+}
 
 export function shouldDisableResendButton(email, busy = false) {
   return busy || !String(email || "").trim();
@@ -11,15 +47,85 @@ export function inspectAuthReturnUrl(href) {
   // Match Supabase JS behavior: query parameters take precedence over the fragment.
   url.searchParams.forEach((value, key) => params.set(key, value));
 
+  const isRecoveryReturn = params.get("flow") === "recovery" || params.get("type") === "recovery";
+
   return {
     isAuthReturn: AUTH_CALLBACK_KEYS.some((key) => params.has(key)) || params.get("type") === "signup",
     isSignupConfirmation: params.get("type") === "signup",
+    isRecoveryReturn,
     isOAuthReturn: !params.has("type") && AUTH_CALLBACK_KEYS.some((key) => params.has(key)),
     hasAccessToken: params.has("access_token"),
     error: (params.get("error") || "").toLowerCase(),
     errorCode: (params.get("error_code") || "").toLowerCase(),
     hasError: params.has("error") || params.has("error_code") || params.has("error_description")
   };
+}
+
+export async function requestPasswordRecovery(auth, email, redirectTo) {
+  try {
+    return await auth.resetPasswordForEmail(email, { redirectTo });
+  } catch {
+    return { error: { code: "network_error" } };
+  }
+}
+
+export async function handlePasswordRecoveryEvent({ auth, event, cleanUrl, showForm, showFeedback }) {
+  if (event !== "PASSWORD_RECOVERY") return { success: false, reason: "not-recovery-event" };
+
+  try {
+    // A successful PASSWORD_RECOVERY event is issued by Supabase only after
+    // it has processed the recovery link. Validate the resulting session and
+    // user, but do not require email_confirmed_at here: confirmation status is
+    // a dashboard-access rule, not a prerequisite for changing a password.
+    const { data: sessionData, error: sessionError } = await auth.getSession();
+    if (sessionError || !sessionData.session) {
+      cleanUrl();
+      showFeedback("This password reset link is invalid or expired. Request a new one.");
+      return { success: false, reason: sessionError ? "session-error" : "no-session" };
+    }
+    const { data: userData, error: userError } = await auth.getUser();
+    cleanUrl();
+    if (userError || !userData.user?.email) {
+      showFeedback("This password reset link is invalid or expired. Request a new one.");
+      return { success: false, reason: userError ? "user-error" : "user-unavailable" };
+    }
+    showForm(userData.user);
+    return { success: true, user: userData.user };
+  } catch {
+    cleanUrl();
+    showFeedback("We couldn't verify this password reset link. Check your connection, then request a new one.");
+    return { success: false, reason: "verification-failed" };
+  }
+}
+
+export async function updateRecoveredPassword(auth, password) {
+  try {
+    return await auth.updateUser({ password });
+  } catch {
+    return { error: { code: "password_update_failed" } };
+  }
+}
+
+export function passwordRecoveryMessage(error, operation) {
+  const code = String(error?.code || "").toLowerCase();
+  if (operation === "request") {
+    if (["over_email_send_rate_limit", "over_request_rate_limit"].includes(code)) {
+      return "Too many requests. Wait a little while, then try again.";
+    }
+    if (["network_error", "fetch_error"].includes(code) || error?.name === "AuthRetryableFetchError" || error instanceof TypeError) {
+      return "Unable to reach the authentication service. Check your connection and try again.";
+    }
+    return "If an account can be recovered with this address, a recovery email will be sent. Check your inbox and spam folder.";
+  }
+  if (code === "weak_password") return "Choose a password that meets each listed requirement.";
+  if (code === "same_password") return "Choose a password different from your current password.";
+  if (["session_not_found", "refresh_token_not_found", "invalid_grant", "otp_expired", "otp_already_used", "flow_state_expired", "bad_code_verifier"].includes(code)) {
+    return "This password reset link is invalid or expired. Request a new one.";
+  }
+  if (error?.name === "AuthRetryableFetchError" || error instanceof TypeError) {
+    return "Unable to reach the authentication service. Check your connection and try again.";
+  }
+  return "The password couldn't be updated. Check the requirements and try again.";
 }
 
 export function cleanAuthReturnUrl(href) {

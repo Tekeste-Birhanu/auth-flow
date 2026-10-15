@@ -142,15 +142,21 @@ The application is built incrementally, with each module establishing a foundati
 
 ## Status
 
-**Current phase:** Module 05 — OAuth Authentication (manual provider verification pending)
+**Current phase:** Module 06 - Password Recovery (manual email-link verification pending)
 
-**Next:** Module 06 — Password Recovery
+**Next:** Module 07 - Testing and Hardening
 
 This is a learning and portfolio project focused on understanding authentication flows and building a maintainable application with minimal tooling.
 
 ## Module 01 implementation notes
 
 Module 01 provides the authentication and account screens as a UI foundation. Module 03 connects email/password registration, sign-in, confirmation emails, and the verified-user dashboard gate. Module 04 adds session management, account details, logout, and password changes. Module 05 connects Google and GitHub sign-in.
+
+### Module 06 password recovery
+
+The recovery form calls Supabase Auth `resetPasswordForEmail()` with the existing app URL and `?flow=recovery` return marker. The marker stays in the query string so Supabase can use the URL fragment for callback tokens. The app reveals the new-password form only after Supabase emits `PASSWORD_RECOVERY` and the app confirms a valid session and user. Email confirmation is enforced by the dashboard gate, not by the recovery form. Invalid, expired, or reused links return to the recovery form with a safe message. Callback parameters are removed after Supabase processes the return. Password updates use `updateUser({ password })` and the same five password requirements shown during signup and password changes. A successful update keeps the user signed in and redirects to the dashboard with a one-time success notice.
+
+Recovery requests use neutral feedback so the page does not disclose whether an account exists. Supabase Dashboard redirect allowlists must include the local app URL (`http://127.0.0.1:4173/**`) and the production app URL when deployed. Email delivery and link behavior must still be verified manually in a browser with the configured Supabase project.
 
 Start the local static server with `npm start` and open the URL printed in the terminal (by default, `http://127.0.0.1:4173`). The server uses Node's built-in HTTP module, so it adds no runtime dependency or build step.
 
