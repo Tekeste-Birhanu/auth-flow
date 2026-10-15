@@ -1,17 +1,25 @@
 import { supabase } from "./supabase.js";
 import {
   authErrorMessage,
+  clearPasswordRecoveryIntent,
   cleanAuthReturnUrl,
+  hasPasswordRecoveryIntent,
+  handlePasswordRecoveryEvent,
   getVerifiedUser,
   handleSignupResponse,
   handleSignupConfirmationReturn as processSignupConfirmationReturn,
   handleOAuthReturn as processOAuthReturn,
   inspectAuthReturnUrl,
   oauthErrorMessage,
+  markPasswordRecoveryIntent,
+  passwordRecoveryMessage,
   protectDashboard as checkDashboardAccess,
   redirectVerifiedUser,
   shouldDisableResendButton,
-  signInWithOAuth
+  shouldHandleRecoveryReturn,
+  signInWithOAuth,
+  requestPasswordRecovery,
+  updateRecoveredPassword
 } from "./auth-helpers.mjs";
 import {
   accountValues,
@@ -29,8 +37,23 @@ const signupEmailInput = document.querySelector("#verify-email");
 let signupEmail = "";
 let currentDashboardUser = null;
 let navigationStarted = false;
-const initialAuthReturn = inspectAuthReturnUrl(window.location.href);
-let handlingAuthReturn = initialAuthReturn.isAuthReturn;
+// Supabase's SDK consumes successful callback parameters during initialization.
+// Keep the original URL in memory so confirmation handling can validate the
+// callback token against the session after the SDK has cleaned the address bar.
+const initialAuthReturnUrl = window.location.href;
+const initialAuthReturn = inspectAuthReturnUrl(initialAuthReturnUrl);
+let recoveryIntentStorage;
+try { recoveryIntentStorage = window.localStorage; } catch { recoveryIntentStorage = null; }
+const pendingRecoveryIntent = hasPasswordRecoveryIntent(recoveryIntentStorage);
+const isRecoveryReturn = shouldHandleRecoveryReturn(initialAuthReturn, pendingRecoveryIntent, location.hash);
+let handlingAuthReturn = initialAuthReturn.isAuthReturn || isRecoveryReturn;
+let recoveryFlowActive = false;
+let recoveryEventHandled = false;
+let initialAuthEventSeen = false;
+let resolveInitialAuthEvent;
+const initialAuthEvent = new Promise((resolve) => { resolveInitialAuthEvent = resolve; });
+let resolveRecoveryEvent;
+const recoveryEvent = new Promise((resolve) => { resolveRecoveryEvent = resolve; });
 
 function setMessage(container, message, kind = "info") {
   if (!container) return;
@@ -108,10 +131,10 @@ function setFormBusy(form, busy, message = "") {
   if (message) setMessage(form.querySelector("[data-message]"), message, "loading");
 }
 
-function redirectToDashboard() {
+function redirectToDashboard(notice = "") {
   if (navigationStarted) return;
   navigationStarted = true;
-  window.location.replace("dashboard.html");
+  window.location.replace(notice ? `dashboard.html?notice=${encodeURIComponent(notice)}` : "dashboard.html");
 }
 
 function redirectToSignIn(notice) {
@@ -165,6 +188,7 @@ async function handleSignup(form) {
 }
 
 async function handleSignin(form) {
+  clearPasswordRecoveryIntent(recoveryIntentStorage);
   const formData = new FormData(form);
   const email = String(formData.get("email") || "").trim();
   const password = String(formData.get("password") || "");
@@ -239,7 +263,7 @@ async function handleSignupConfirmationReturn() {
   await processSignupConfirmationReturn({
     auth: supabase?.auth,
     authReturn: initialAuthReturn,
-    href: window.location.href,
+    href: initialAuthReturnUrl,
     cleanUrl: cleanCurrentAuthReturn,
     showFeedback: (message) => {
       handlingAuthReturn = false;
@@ -411,10 +435,114 @@ async function handleChangePassword(form) {
   }
 }
 
+async function handleRecoveryRequest(form) {
+  const email = String(new FormData(form).get("email") || "").trim();
+  setFormBusy(form, true, "Requesting a recovery email…");
+  try {
+    if (!supabase) throw new Error("client-unavailable");
+    // Keep route state in the query. Supabase's implicit callback uses the URL
+    // fragment for tokens, so adding a view hash here would corrupt that fragment.
+    const redirectTo = `${window.location.origin}/index.html?flow=recovery`;
+    const { error } = await requestPasswordRecovery(supabase.auth, email, redirectTo);
+    if (!error) markPasswordRecoveryIntent(recoveryIntentStorage);
+    setMessage(form.querySelector("[data-message]"), passwordRecoveryMessage(error, "request"), error ? "error" : "info");
+  } catch (error) {
+    setMessage(form.querySelector("[data-message]"), passwordRecoveryMessage(error, "request"), "info");
+  } finally {
+    setFormBusy(form, false);
+  }
+}
+
+async function handleNewPassword(form) {
+  if (!recoveryFlowActive) {
+    setMessage(form.querySelector("[data-message]"), "This password reset link is invalid or expired. Request a new one.", "error");
+    return;
+  }
+  const password = String(new FormData(form).get("password") || "");
+  setFormBusy(form, true, "Updating your password…");
+  try {
+    if (!supabase) throw new Error("client-unavailable");
+    const { error } = await updateRecoveredPassword(supabase.auth, password);
+    if (error) {
+      setMessage(form.querySelector("[data-message]"), passwordRecoveryMessage(error, "update"), "error");
+      return;
+    }
+    recoveryFlowActive = false;
+    redirectToDashboard("password-reset");
+  } catch (error) {
+    setMessage(form.querySelector("[data-message]"), passwordRecoveryMessage(error, "update"), "error");
+  } finally {
+    form.querySelectorAll("input[type='password']").forEach((input) => { input.value = ""; });
+    setFormBusy(form, false);
+  }
+}
+
+function handleRecoveryUrlFailure() {
+  clearPasswordRecoveryIntent(recoveryIntentStorage);
+  cleanCurrentAuthReturn();
+  handlingAuthReturn = false;
+  showView("recovery", false, false);
+  setMessage(
+    document.querySelector('#view-recovery [data-message]'),
+    "This password reset link is invalid or expired. Request a new one.",
+    "error"
+  );
+}
+
+async function handleRecoveryEvent(event) {
+  const result = await handlePasswordRecoveryEvent({
+    auth: supabase?.auth,
+    event,
+    cleanUrl: cleanCurrentAuthReturn,
+    showForm() {
+      recoveryFlowActive = true;
+      handlingAuthReturn = false;
+      showView("new-password", false, false);
+    },
+    showFeedback(message) {
+      recoveryFlowActive = false;
+      handlingAuthReturn = false;
+      showView("recovery", false, false);
+      setMessage(document.querySelector('#view-recovery [data-message]'), message, "error");
+    }
+  });
+  clearPasswordRecoveryIntent(recoveryIntentStorage);
+  return result;
+}
+
+function showDashboardNotice() {
+  const url = new URL(window.location.href);
+  const notice = url.searchParams.get("notice");
+  if (notice === "password-reset") {
+    setMessage(document.querySelector("[data-global-message]"), "Your password has been reset successfully.", "success");
+    url.searchParams.delete("notice");
+    history.replaceState(history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+}
+
 function subscribeToAuthChanges() {
   if (!supabase) return;
   const onDashboard = document.body.classList.contains("dashboard-page");
   listenForAuthChanges(supabase.auth, async (event, session) => {
+    if (!initialAuthEventSeen) {
+      initialAuthEventSeen = true;
+      if (event === "PASSWORD_RECOVERY") {
+        recoveryEventHandled = true;
+        await handleRecoveryEvent(event);
+        resolveInitialAuthEvent(event);
+        resolveRecoveryEvent(event);
+      } else {
+        resolveInitialAuthEvent(event);
+      }
+    }
+    if (event === "PASSWORD_RECOVERY") {
+      if (!recoveryEventHandled && !document.body.classList.contains("dashboard-page")) {
+        recoveryEventHandled = true;
+        await handleRecoveryEvent(event);
+        resolveRecoveryEvent(event);
+      }
+      return;
+    }
     if (onDashboard) {
       if (event === "SIGNED_OUT") {
         redirectToSignIn("signed-out");
@@ -427,7 +555,7 @@ function subscribeToAuthChanges() {
     }
 
     // The sign-in form verifies SIGNED_IN itself; avoid a concurrent duplicate getUser() check.
-    if (initialAuthReturn.isAuthReturn || !session ||
+    if (initialAuthReturn.isAuthReturn || isRecoveryReturn || !session ||
         !["INITIAL_SESSION", "TOKEN_REFRESHED", "USER_UPDATED"].includes(event)) return;
     await redirectVerifiedUser(supabase.auth, redirectToDashboard);
   });
@@ -437,6 +565,9 @@ document.addEventListener("click", (event) => {
   const link = event.target.closest("[data-view-link]");
   if (link) {
     event.preventDefault();
+    if (!['recovery', 'new-password'].includes(link.dataset.viewLink)) {
+      clearPasswordRecoveryIntent(recoveryIntentStorage);
+    }
     showView(link.dataset.viewLink);
     return;
   }
@@ -454,6 +585,7 @@ document.addEventListener("click", (event) => {
 
   const oauthButton = event.target.closest("[data-oauth-provider]");
   if (oauthButton) {
+    clearPasswordRecoveryIntent(recoveryIntentStorage);
     void startOAuthSignIn(oauthButton);
     return;
   }
@@ -540,13 +672,15 @@ document.querySelectorAll("[data-local-form]").forEach((form) => {
       void handleChangePassword(form);
       return;
     }
-
-    const message = form.querySelector("[data-message]");
     if (form.id === "recovery-form") {
-      setMessage(message, "Password recovery will be available in a later module. No email was sent.");
-    } else if (form.id === "new-password-form") {
-      setMessage(message, "Password changes will be available in a later module. No password was changed.");
+      void handleRecoveryRequest(form);
+      return;
     }
+    if (form.id === "new-password-form") {
+      void handleNewPassword(form);
+      return;
+    }
+
   });
 });
 
@@ -568,14 +702,44 @@ function updatePasswordRequirements(input) {
 }
 
 subscribeToAuthChanges();
-if (document.body.classList.contains("dashboard-page")) {
-  void protectDashboard();
-} else if (initialAuthReturn.isSignupConfirmation) {
-  void handleSignupConfirmationReturn();
-} else if (initialAuthReturn.isOAuthReturn) {
-  void handleOAuthCallback();
-} else {
+async function initializePage() {
+  if (document.body.classList.contains("dashboard-page")) {
+    await protectDashboard();
+    if (!document.querySelector("[data-dashboard-app]")?.hidden) showDashboardNotice();
+    return;
+  }
+
   const initialView = location.hash.slice(1) || "signin";
-  showView(initialView, false, Boolean(location.hash));
-  showRedirectNotice();
+  if (!supabase) {
+    showView(initialView === "new-password" ? "recovery" : initialView, false, Boolean(location.hash));
+    if (initialView === "new-password") setMessage(document.querySelector('#view-recovery [data-message]'), "This password reset link is invalid or expired. Request a new one.", "error");
+    showRedirectNotice();
+    return;
+  }
+
+  if (isRecoveryReturn || initialView === "new-password") {
+    if (!initialAuthReturn.hasError) {
+      await Promise.race([recoveryEvent, new Promise((resolve) => setTimeout(() => resolve("timeout"), 8000))]);
+    }
+  } else if (initialAuthReturn.isAuthReturn) {
+    await Promise.race([initialAuthEvent, new Promise((resolve) => setTimeout(() => resolve("timeout"), 8000))]);
+  }
+  if (recoveryFlowActive) return;
+  if (isRecoveryReturn || initialView === "new-password") {
+    if (initialAuthReturn.hasError || initialAuthEventSeen) handleRecoveryUrlFailure();
+    else {
+      handlingAuthReturn = false;
+      showView("recovery", false, false);
+      setMessage(document.querySelector('#view-recovery [data-message]'), "We couldn't verify this password reset link. Check your connection, then request a new one.", "error");
+    }
+  } else if (initialAuthReturn.isSignupConfirmation) {
+    void handleSignupConfirmationReturn();
+  } else if (initialAuthReturn.isOAuthReturn) {
+    void handleOAuthCallback();
+  } else {
+    handlingAuthReturn = false;
+    showView(initialView, false, Boolean(location.hash));
+    showRedirectNotice();
+  }
 }
+void initializePage();

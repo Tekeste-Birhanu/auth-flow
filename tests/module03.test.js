@@ -82,7 +82,7 @@ async function withBrowserClient(href, fetchHandler, run) {
 }
 
 test("signup confirmation return is consumed and user is checked by the installed Supabase SDK", async () => {
-  const { inspectAuthReturnUrl, getVerifiedUser } = await authHelpersPromise;
+  const { handleSignupConfirmationReturn, inspectAuthReturnUrl, getVerifiedUser } = await authHelpersPromise;
   const initialUrl = "http://127.0.0.1:4173/#access_token=access-token&refresh_token=refresh-token&expires_in=3600&token_type=bearer&type=signup";
   const user = makeUser(true);
   const requests = [];
@@ -100,6 +100,7 @@ test("signup confirmation return is consumed and user is checked by the installe
     assert.deepEqual(inspectAuthReturnUrl(initialUrl), {
       isAuthReturn: true,
       isSignupConfirmation: true,
+      isRecoveryReturn: false,
       isOAuthReturn: false,
       hasAccessToken: true,
       error: "",
@@ -115,6 +116,20 @@ test("signup confirmation return is consumed and user is checked by the installe
     const confirmed = await getVerifiedUser(client.auth);
     assert.equal(confirmed.user.id, user.id);
     assert.equal(confirmed.reason, null);
+
+    let dashboardVisible = false;
+    let feedback = "";
+    const callbackResult = await handleSignupConfirmationReturn({
+      auth: client.auth,
+      authReturn: inspectAuthReturnUrl(initialUrl),
+      href: initialUrl,
+      cleanUrl() {},
+      showFeedback(message) { feedback = message; },
+      showDashboard() { dashboardVisible = true; }
+    });
+    assert.equal(callbackResult.success, true, "the original callback URL remains available after the SDK cleans the browser URL");
+    assert.equal(dashboardVisible, true);
+    assert.equal(feedback, "");
     assert.ok(requests.length >= 2, "SDK should validate the callback token and getUser() should verify the saved session");
   });
 });

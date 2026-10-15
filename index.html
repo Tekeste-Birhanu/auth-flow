@@ -123,16 +123,24 @@
       <section class="auth-view" id="view-new-password" data-view="new-password" aria-labelledby="new-password-title"
         hidden>
         <h1 id="new-password-title" tabindex="-1">Set a new password</h1>
-        <p class="intro">Choose a new password after opening a valid recovery link.</p>
+        <p class="intro">Choose a new password that meets each requirement.</p>
         <form id="new-password-form" method="post" data-local-form>
           <label for="new-password">New password</label>
           <div class="password-field">
             <input id="new-password" name="password" type="password" autocomplete="new-password" minlength="8"
-              aria-describedby="new-password-hint" required>
+              aria-describedby="new-password-hint new-password-rules" data-password-rules required>
             <button class="visibility-toggle" type="button" data-password-toggle="new-password"
               aria-label="Show password">Show</button>
           </div>
-          <p class="field-hint" id="new-password-hint">Use at least 8 characters.</p>
+          <p class="field-hint" id="new-password-hint">Your password must meet all five requirements:</p>
+          <ul class="password-requirements" id="new-password-rules" aria-label="New password requirements">
+            <li data-password-rule="length"><span aria-hidden="true">○</span> At least 8 characters</li>
+            <li data-password-rule="lowercase"><span aria-hidden="true">○</span> A lowercase letter</li>
+            <li data-password-rule="uppercase"><span aria-hidden="true">○</span> An uppercase letter</li>
+            <li data-password-rule="digit"><span aria-hidden="true">○</span> A number</li>
+            <li data-password-rule="symbol"><span aria-hidden="true">○</span> A symbol</li>
+          </ul>
+          <p class="field-hint" data-password-rules-status aria-live="polite">0 of 5 requirements met.</p>
           <label for="new-password-confirm">Confirm new password</label>
           <div class="password-field">
             <input id="new-password-confirm" name="confirm" type="password" autocomplete="new-password" required>
